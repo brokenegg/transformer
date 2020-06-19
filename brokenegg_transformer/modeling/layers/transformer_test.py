@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
@@ -29,16 +28,14 @@ from brokenegg_transformer.modeling.layers import transformer
 # This decorator runs the test in V1, V2-Eager, and V2-Functional mode. It
 # guarantees forward compatibility of this code for the V2 switchover.
 @keras_parameterized.run_all_keras_modes
-@parameterized.named_parameters(('base', transformer.Transformer),
-                                ('xla', transformer.CompiledTransformer))
 class TransformerLayerTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     super(TransformerLayerTest, self).tearDown()
     tf.keras.mixed_precision.experimental.set_policy('float32')
 
-  def test_layer_creation(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_layer_creation(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu')
@@ -50,8 +47,8 @@ class TransformerLayerTest(keras_parameterized.TestCase):
     # The default output of a transformer layer should be the same as the input.
     self.assertEqual(data_tensor.shape.as_list(), output_tensor.shape.as_list())
 
-  def test_layer_creation_with_mask(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_layer_creation_with_mask(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu')
@@ -65,8 +62,8 @@ class TransformerLayerTest(keras_parameterized.TestCase):
     # The default output of a transformer layer should be the same as the input.
     self.assertEqual(data_tensor.shape.as_list(), output_tensor.shape.as_list())
 
-  def test_layer_creation_with_incorrect_mask_fails(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_layer_creation_with_incorrect_mask_fails(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu')
@@ -79,8 +76,8 @@ class TransformerLayerTest(keras_parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'When passing a mask tensor.*'):
       _ = test_layer([data_tensor, mask_tensor])
 
-  def test_layer_invocation(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_layer_invocation(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu')
@@ -100,8 +97,8 @@ class TransformerLayerTest(keras_parameterized.TestCase):
         (batch_size, sequence_length, width))
     _ = model.predict(input_data)
 
-  def test_layer_invocation_with_mask(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_layer_invocation_with_mask(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu')
@@ -127,36 +124,9 @@ class TransformerLayerTest(keras_parameterized.TestCase):
         2, size=(batch_size, sequence_length, sequence_length))
     _ = model.predict([input_data, mask_data])
 
-  def test_layer_output_range(self, transformer_cls):
-    test_layer = transformer_cls(
-        num_attention_heads=10,
-        intermediate_size=2048,
-        intermediate_activation='relu')
-    sequence_length = 21
-    width = 80
-
-    batch_size = 6
-    input_data = 10 * np.random.random_sample(
-        (batch_size, sequence_length, width))
-    mask_data = np.random.randint(
-        2, size=(batch_size, sequence_length, sequence_length))
-    output_tensor = test_layer([input_data, mask_data])
-
-    # The layer only attends to the first token and outputs the first token
-    # embeeding.
-    new_layer = transformer_cls(
-        num_attention_heads=10,
-        intermediate_size=2048,
-        intermediate_activation='relu',
-        output_range=1)
-    _ = new_layer([input_data, mask_data])
-    new_layer.set_weights(test_layer.get_weights())
-    new_output_tensor = new_layer([input_data, mask_data])
-    self.assertAllClose(new_output_tensor, output_tensor[:, 0:1, :])
-
-  def test_layer_invocation_with_float16_dtype(self, transformer_cls):
+  def test_layer_invocation_with_float16_dtype(self):
     tf.keras.mixed_precision.experimental.set_policy('mixed_float16')
-    test_layer = transformer_cls(
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu')
@@ -182,8 +152,8 @@ class TransformerLayerTest(keras_parameterized.TestCase):
         2, size=(batch_size, sequence_length, sequence_length))
     _ = model.predict([input_data, mask_data])
 
-  def test_transform_with_initializer(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_transform_with_initializer(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu',
@@ -196,8 +166,8 @@ class TransformerLayerTest(keras_parameterized.TestCase):
     # The default output of a transformer layer should be the same as the input.
     self.assertEqual(data_tensor.shape.as_list(), output.shape.as_list())
 
-  def test_dynamic_layer_sequence(self, transformer_cls):
-    test_layer = transformer_cls(
+  def test_dynamic_layer_sequence(self):
+    test_layer = transformer.Transformer(
         num_attention_heads=10,
         intermediate_size=2048,
         intermediate_activation='relu',

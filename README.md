@@ -26,6 +26,12 @@ Below are the commands for running the Transformer model. See the
 model.
 
 ```
+# Ensure that PYTHONPATH is correctly defined as described in
+# https://github.com/tensorflow/models/tree/master/official#requirements
+export PYTHONPATH="$PYTHONPATH:/path/to/models"
+
+cd /path/to/models/official/nlp/transformer
+
 # Export variables
 PARAM_SET=big
 DATA_DIR=$HOME/transformer/data

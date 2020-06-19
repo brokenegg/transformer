@@ -20,7 +20,9 @@ from __future__ import print_function
 
 from absl import flags
 import tensorflow as tf
+
 from brokenegg_transformer.utils.flags._conventions import help_wrap
+from brokenegg_transformer.utils.logs import hooks_helper
 
 
 def define_base(data_dir=True, model_dir=True, clean=False, train_epochs=False,
@@ -112,13 +114,17 @@ def define_base(data_dir=True, model_dir=True, clean=False, train_epochs=False,
         help="Run the model op by op without building a model function.")
 
   if hooks:
+    # Construct a pretty summary of hooks.
+    hook_list_str = (
+        u"\ufeff  Hook:\n" + u"\n".join([u"\ufeff    {}".format(key) for key
+                                         in hooks_helper.HOOKS]))
     flags.DEFINE_list(
         name="hooks", short_name="hk", default="LoggingTensorHook",
         help=help_wrap(
             u"A list of (case insensitive) strings to specify the names of "
-            u"training hooks. Example: `--hooks ProfilerHook,"
-            u"ExamplesPerSecondHook`\n See hooks_helper "
-            u"for details.")
+            u"training hooks.\n{}\n\ufeff  Example: `--hooks ProfilerHook,"
+            u"ExamplesPerSecondHook`\n See brokenegg_transformer.utils.logs.hooks_helper "
+            u"for details.".format(hook_list_str))
     )
     key_flags.append("hooks")
 

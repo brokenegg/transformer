@@ -17,6 +17,7 @@
 import tensorflow as tf
 
 from brokenegg_transformer import beam_search_v1 as v1
+from brokenegg_transformer import misc
 
 _StateKeys = v1._StateKeys  # pylint: disable=protected-access
 
@@ -51,8 +52,8 @@ class SequenceBeamSearchV2(v1.SequenceBeamSearch):
     # Account for corner case where there are no finished sequences for a
     # particular batch item. In that case, return alive sequences for that batch
     # item.
-    finished_seq = tf.where(seq_cond, finished_seq, alive_seq)
-    finished_scores = tf.where(
+    finished_seq = tf.compat.v2.where(seq_cond, finished_seq, alive_seq)
+    finished_scores = tf.compat.v2.where(
         score_cond, finished_scores, alive_log_probs)
     return finished_seq, finished_scores
 
@@ -101,9 +102,14 @@ def sequence_beam_search(symbols_to_logits_fn,
   batch_size = (
       initial_ids.shape.as_list()[0] if padded_decode else
       tf.shape(initial_ids)[0])
-  sbs = SequenceBeamSearchV2(symbols_to_logits_fn, vocab_size, batch_size,
-                             beam_size, alpha, max_decode_length, eos_id,
-                             padded_decode, dtype)
+  if misc.is_v2():
+    sbs = SequenceBeamSearchV2(symbols_to_logits_fn, vocab_size, batch_size,
+                               beam_size, alpha, max_decode_length, eos_id,
+                               padded_decode, dtype)
+  else:
+    sbs = v1.SequenceBeamSearch(symbols_to_logits_fn, vocab_size, batch_size,
+                                beam_size, alpha, max_decode_length, eos_id,
+                                padded_decode, dtype)
   return sbs.search(initial_ids, initial_cache)
 
 

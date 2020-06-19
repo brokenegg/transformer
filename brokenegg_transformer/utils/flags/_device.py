@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl import flags
-from absl import logging
+import tensorflow as tf
 
 from brokenegg_transformer.utils.flags._conventions import help_wrap
 
@@ -39,7 +39,7 @@ def require_cloud_storage(flag_names):
     valid_flags = True
     for key in flag_names:
       if not flag_values[key].startswith("gs://"):
-        logging.error("%s must be a GCS path.", key)
+        tf.compat.v1.logging.error("{} must be a GCS path.".format(key))
         valid_flags = False
 
     return valid_flags

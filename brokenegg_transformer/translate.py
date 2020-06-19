@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl import logging
 import numpy as np
 import tensorflow as tf
 
@@ -118,7 +117,8 @@ def translate_file(model,
           maxlen=params["decode_max_length"],
           dtype="int32",
           padding="post")
-      logging.info("Decoding batch %d out of %d.", i, num_decode_batches)
+      tf.compat.v1.logging.info("Decoding batch %d out of %d.", i,
+                                num_decode_batches)
       yield batch
 
   @tf.function
@@ -172,15 +172,16 @@ def translate_file(model,
         translation = _trim_and_decode(val_outputs[j], subtokenizer)
         translations.append(translation)
         if print_all_translations:
-          logging.info("Translating:\n\tInput: %s\n\tOutput: %s",
-                       sorted_inputs[j + i * batch_size], translation)
+          tf.compat.v1.logging.info(
+              "Translating:\n\tInput: %s\n\tOutput: %s" %
+              (sorted_inputs[j + i * batch_size], translation))
 
   # Write translations in the order they appeared in the original file.
   if output_file is not None:
     if tf.io.gfile.isdir(output_file):
       raise ValueError("File output is a directory, will not save outputs to "
                        "file.")
-    logging.info("Writing to file %s", output_file)
+    tf.compat.v1.logging.info("Writing to file %s" % output_file)
     with tf.compat.v1.gfile.Open(output_file, "w") as f:
       for i in sorted_keys:
         f.write("%s\n" % translations[i])
@@ -190,10 +191,10 @@ def translate_from_text(model, subtokenizer, txt):
   encoded_txt = _encode_and_add_eos(txt, subtokenizer)
   result = model.predict(encoded_txt)
   outputs = result["outputs"]
-  logging.info("Original: \"%s\"", txt)
+  tf.compat.v1.logging.info("Original: \"%s\"" % txt)
   translate_from_input(outputs, subtokenizer)
 
 
 def translate_from_input(outputs, subtokenizer):
   translation = _trim_and_decode(outputs, subtokenizer)
-  logging.info("Translation: \"%s\"", translation)
+  tf.compat.v1.logging.info("Translation: \"%s\"" % translation)

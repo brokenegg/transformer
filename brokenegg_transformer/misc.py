@@ -22,6 +22,10 @@ from __future__ import print_function
 from absl import flags
 import tensorflow as tf
 
+# TODO(tianlin) Import internal library. Remove this when some functions for
+# different TF versions are fixed.
+from tensorflow.python import tf2 as tf2_internal
+
 from brokenegg_transformer import model_params
 from brokenegg_transformer.utils.flags import core as flags_core
 from brokenegg_transformer.utils.misc import keras_utils
@@ -33,6 +37,11 @@ PARAMS_MAP = {
     'base': model_params.BASE_PARAMS,
     'big': model_params.BIG_PARAMS,
 }
+
+
+def is_v2():
+  """Returns whether it is v2."""
+  return tf2_internal.enabled()
 
 
 def get_model_params(param_set, num_gpus):
@@ -69,6 +78,17 @@ def define_transformer_flags():
       fp16_implementation=True
   )
 
+  # Additional performance flags
+  # TODO(b/76028325): Remove when generic layout optimizer is ready.
+  flags.DEFINE_boolean(
+      name='enable_grappler_layout_optimizer',
+      default=True,
+      help='Enable Grappler layout optimizer. Currently Grappler can '
+           'de-optimize fp16 graphs by forcing NCHW layout for all '
+           'convolutions and batch normalizations, and this flag allows to '
+           'disable it.'
+  )
+
   flags_core.define_benchmark()
   flags_core.define_device(tpu=True)
 
@@ -76,7 +96,7 @@ def define_transformer_flags():
       name='train_steps', short_name='ts', default=300000,
       help=flags_core.help_wrap('The number of steps used to train.'))
   flags.DEFINE_integer(
-      name='steps_between_evals', short_name='sbe', default=5000,
+      name='steps_between_evals', short_name='sbe', default=1000,
       help=flags_core.help_wrap(
           'The Number of training steps to run between evaluations. This is '
           'used if --train_steps is defined.'))
@@ -89,10 +109,14 @@ def define_transformer_flags():
   flags.DEFINE_boolean(
       name='enable_metrics_in_training', default=False,
       help='Whether to enable metrics during training.')
-  flags.DEFINE_boolean(
-      name='enable_mlir_bridge',
-      default=False,
-      help='Whether to enable the TF to XLA bridge.')
+  flags.DEFINE_string(
+      name='profile_steps', default=None,
+      help='Save profiling data to model dir at given range of steps. The '
+      'value must be a comma separated pair of positive integers, specifying '
+      'the first and last step to profile. For example, "--profile_steps=2,4" '
+      'triggers the profiler to process 3 steps, starting from the 2nd step. '
+      'Note that profiler has a non-trivial performance overhead, and the '
+      'output file can be gigantic if profiling many steps.')
   # Set flags from the flags_core module as 'key flags' so they're listed when
   # the '-h' flag is used. Without this line, the flags defined above are
   # only shown in the full `--helpful` help text.
@@ -211,14 +235,11 @@ def define_transformer_flags():
   # pylint: enable=unused-variable
 
 
-def get_callbacks():
+def get_callbacks(steps_per_epoch):
   """Returns common callbacks."""
   callbacks = []
   if FLAGS.enable_time_history:
-    time_callback = keras_utils.TimeHistory(
-        FLAGS.batch_size,
-        FLAGS.log_steps,
-        logdir=FLAGS.model_dir if FLAGS.enable_tensorboard else None)
+    time_callback = keras_utils.TimeHistory(FLAGS.batch_size, FLAGS.log_steps)
     callbacks.append(time_callback)
 
   if FLAGS.enable_tensorboard:
@@ -226,18 +247,29 @@ def get_callbacks():
         log_dir=FLAGS.model_dir)
     callbacks.append(tensorboard_callback)
 
+  if FLAGS.profile_steps:
+    profiler_callback = keras_utils.get_profiler_callback(
+        FLAGS.model_dir,
+        FLAGS.profile_steps,
+        FLAGS.enable_tensorboard,
+        steps_per_epoch)
+    callbacks.append(profiler_callback)
+
   return callbacks
 
 
-def update_stats(history, stats, callbacks):
-  """Normalizes and updates dictionary of stats.
+def build_stats(history, callbacks):
+  """Normalizes and returns dictionary of stats.
 
   Args:
     history: Results of the training step.
-    stats: Dict with pre-existing training stats.
     callbacks: a list of callbacks which might include a time history callback
       used during keras.fit.
+
+  Returns:
+    Dictionary of normalized results.
   """
+  stats = {}
 
   if history and history.history:
     train_hist = history.history
@@ -245,7 +277,7 @@ def update_stats(history, stats, callbacks):
     stats['loss'] = float(train_hist['loss'][-1])
 
   if not callbacks:
-    return
+    return stats
 
   # Look for the time history callback which was used during keras.fit
   for callback in callbacks:
@@ -258,3 +290,4 @@ def update_stats(history, stats, callbacks):
             callback.batch_size * callback.log_steps *
             (len(callback.timestamp_log)-1) /
             (timestamp_log[-1].timestamp - timestamp_log[0].timestamp))
+  return stats

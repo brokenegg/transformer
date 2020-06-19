@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 import tensorflow as tf
 from brokenegg_transformer.modeling import layers
 
@@ -49,34 +47,25 @@ class Attention(tf.keras.layers.Layer):
     """Builds the layer."""
     # Layers for linearly projecting the queries, keys, and values.
     size_per_head = self.hidden_size // self.num_heads
-
-    def _glorot_initializer(fan_in, fan_out):
-      limit = math.sqrt(6.0 / (fan_in + fan_out))
-      return tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
-
-    attention_initializer = _glorot_initializer(input_shape.as_list()[-1],
-                                                self.hidden_size)
     self.query_dense_layer = layers.DenseEinsum(
         output_shape=(self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer="glorot_uniform",
         use_bias=False,
         name="query")
     self.key_dense_layer = layers.DenseEinsum(
         output_shape=(self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer="glorot_uniform",
         use_bias=False,
         name="key")
     self.value_dense_layer = layers.DenseEinsum(
         output_shape=(self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer="glorot_uniform",
         use_bias=False,
         name="value")
-
-    output_initializer = _glorot_initializer(self.hidden_size, self.hidden_size)
     self.output_dense_layer = layers.DenseEinsum(
         output_shape=self.hidden_size,
         num_summed_dimensions=2,
-        kernel_initializer=output_initializer,
+        kernel_initializer="glorot_uniform",
         use_bias=False,
         name="output_transform")
     super(Attention, self).build(input_shape)

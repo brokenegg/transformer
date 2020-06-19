@@ -20,7 +20,8 @@ from __future__ import print_function
 
 import tensorflow as tf  # pylint: disable=g-bad-import-order
 
-from brokenegg_transformer.utils.msc import model_helpers
+from brokenegg_transformer.utils.misc import keras_utils
+from brokenegg_transformer.utils.misc import model_helpers
 
 
 class PastStopThresholdTest(tf.test.TestCase):
@@ -28,7 +29,8 @@ class PastStopThresholdTest(tf.test.TestCase):
 
   def setUp(self):
     super(PastStopThresholdTest, self).setUp()
-    tf.compat.v1.disable_eager_execution()
+    if keras_utils.is_v2_0:
+      tf.compat.v1.disable_eager_execution()
 
   def test_past_stop_threshold(self):
     """Tests for normal operating conditions."""

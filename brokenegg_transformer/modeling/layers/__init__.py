@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,17 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Layers package definition."""
-# pylint: disable=wildcard-import
-from brokenegg_transformer.modeling.layers.attention import *
-from brokenegg_transformer.modeling.layers.cls_head import *
+from brokenegg_transformer.modeling.layers.attention import *  # pylint: disable=wildcard-import
 from brokenegg_transformer.modeling.layers.dense_einsum import DenseEinsum
-from brokenegg_transformer.modeling.layers.gated_feedforward import GatedFeedforward
-from brokenegg_transformer.modeling.layers.masked_lm import MaskedLM
 from brokenegg_transformer.modeling.layers.masked_softmax import MaskedSoftmax
 from brokenegg_transformer.modeling.layers.on_device_embedding import OnDeviceEmbedding
 from brokenegg_transformer.modeling.layers.position_embedding import PositionEmbedding
-from brokenegg_transformer.modeling.layers.rezero_transformer import ReZeroTransformer
 from brokenegg_transformer.modeling.layers.self_attention_mask import SelfAttentionMask
-from brokenegg_transformer.modeling.layers.talking_heads_attention import TalkingHeadsAttention
 from brokenegg_transformer.modeling.layers.transformer import Transformer
 from brokenegg_transformer.modeling.layers.transformer_scaffold import TransformerScaffold

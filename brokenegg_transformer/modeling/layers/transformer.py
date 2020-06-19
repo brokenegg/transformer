@@ -19,12 +19,10 @@ from __future__ import division
 # from __future__ import google_type_annotations
 from __future__ import print_function
 
-import gin
 import tensorflow as tf
 
 from brokenegg_transformer.modeling.layers import attention
 from brokenegg_transformer.modeling.layers import dense_einsum
-from brokenegg_transformer.modeling.layers.util import tf_function_if_eager
 
 
 @tf.keras.utils.register_keras_serializable(package="Text")
@@ -40,8 +38,6 @@ class Transformer(tf.keras.layers.Layer):
     intermediate_activation: Activation for the intermediate layer.
     dropout_rate: Dropout probability for the post-attention and output dropout.
     attention_dropout_rate: Dropout probability for within the attention layer.
-    output_range: the sequence output range, [0, output_range) by slicing the
-      target sequence. `None` means the target sequence is not sliced.
     kernel_initializer: Initializer for dense layer kernels.
     bias_initializer: Initializer for dense layer biases.
     kernel_regularizer: Regularizer for dense layer kernels.
@@ -57,7 +53,6 @@ class Transformer(tf.keras.layers.Layer):
                intermediate_activation,
                dropout_rate=0.0,
                attention_dropout_rate=0.0,
-               output_range=None,
                kernel_initializer="glorot_uniform",
                bias_initializer="zeros",
                kernel_regularizer=None,
@@ -73,7 +68,6 @@ class Transformer(tf.keras.layers.Layer):
     self._intermediate_activation = intermediate_activation
     self._attention_dropout_rate = attention_dropout_rate
     self._dropout_rate = dropout_rate
-    self._output_range = output_range
     self._kernel_initializer = tf.keras.initializers.get(kernel_initializer)
     self._bias_initializer = tf.keras.initializers.get(bias_initializer)
     self._kernel_regularizer = tf.keras.regularizers.get(kernel_regularizer)
@@ -107,8 +101,8 @@ class Transformer(tf.keras.layers.Layer):
 
     self._attention_layer = attention.MultiHeadAttention(
         num_heads=self._num_heads,
-        key_size=self._attention_head_size,
-        dropout=self._attention_dropout_rate,
+        head_size=self._attention_head_size,
+        dropout_rate=self._attention_dropout_rate,
         kernel_initializer=self._kernel_initializer,
         bias_initializer=self._bias_initializer,
         kernel_regularizer=self._kernel_regularizer,
@@ -117,10 +111,17 @@ class Transformer(tf.keras.layers.Layer):
         kernel_constraint=self._kernel_constraint,
         bias_constraint=self._bias_constraint,
         name="self_attention")
-    # pylint: disable=protected-access
-    self._attention_layer.build([input_tensor_shape] * 3)
-    self._attention_output_dense = self._attention_layer._output_dense
-    # pylint: enable=protected-access
+    self._attention_output_dense = dense_einsum.DenseEinsum(
+        output_shape=hidden_size,
+        num_summed_dimensions=2,
+        kernel_initializer=self._kernel_initializer,
+        bias_initializer=self._bias_initializer,
+        kernel_regularizer=self._kernel_regularizer,
+        bias_regularizer=self._bias_regularizer,
+        activity_regularizer=self._activity_regularizer,
+        kernel_constraint=self._kernel_constraint,
+        bias_constraint=self._bias_constraint,
+        name="self_attention_output")
     self._attention_dropout = tf.keras.layers.Dropout(rate=self._dropout_rate)
     # Use float32 in layernorm for numeric stability.
     # It is probably safe in mixed_float16, but we haven't validated this yet.
@@ -141,14 +142,8 @@ class Transformer(tf.keras.layers.Layer):
         kernel_constraint=self._kernel_constraint,
         bias_constraint=self._bias_constraint,
         name="intermediate")
-    policy = tf.keras.mixed_precision.experimental.global_policy()
-    if policy.name == "mixed_bfloat16":
-      # bfloat16 causes BERT with the LAMB optimizer to not converge
-      # as well, so we use float32.
-      # TODO(b/154538392): Investigate this.
-      policy = tf.float32
     self._intermediate_activation_layer = tf.keras.layers.Activation(
-        self._intermediate_activation, dtype=policy)
+        self._intermediate_activation)
     self._output_dense = dense_einsum.DenseEinsum(
         output_shape=hidden_size,
         kernel_initializer=self._kernel_initializer,
@@ -178,8 +173,6 @@ class Transformer(tf.keras.layers.Layer):
             self._dropout_rate,
         "attention_dropout_rate":
             self._attention_dropout_rate,
-        "output_range":
-            self._output_range,
         "kernel_initializer":
             tf.keras.initializers.serialize(self._kernel_initializer),
         "bias_initializer":
@@ -204,16 +197,15 @@ class Transformer(tf.keras.layers.Layer):
     else:
       input_tensor, attention_mask = (inputs, None)
 
-    if self._output_range:
-      target_tensor = input_tensor[:, 0:self._output_range, :]
-      attention_mask = attention_mask[:, 0:self._output_range, :]
-    else:
-      target_tensor = input_tensor
-    attention_inputs = [target_tensor, input_tensor]
+    attention_inputs = [input_tensor, input_tensor]
 
-    attention_output = self._attention_layer(attention_inputs, attention_mask)
+    if attention_mask is not None:
+      attention_inputs.append(attention_mask)
+
+    attention_output = self._attention_layer(attention_inputs)
+    attention_output = self._attention_output_dense(attention_output)
     attention_output = self._attention_dropout(attention_output)
-    attention_output = self._attention_layer_norm(target_tensor +
+    attention_output = self._attention_layer_norm(input_tensor +
                                                   attention_output)
     intermediate_output = self._intermediate_dense(attention_output)
     intermediate_output = self._intermediate_activation_layer(
@@ -227,12 +219,3 @@ class Transformer(tf.keras.layers.Layer):
     layer_output = self._output_layer_norm(layer_output + attention_output)
 
     return layer_output
-
-
-@tf.keras.utils.register_keras_serializable(package="Text")
-@gin.configurable
-class CompiledTransformer(Transformer):
-
-  @tf_function_if_eager(experimental_compile=True)
-  def call(self, inputs):
-    return super(CompiledTransformer, self).call(inputs)
