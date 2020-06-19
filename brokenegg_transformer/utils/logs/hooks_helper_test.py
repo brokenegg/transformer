@@ -23,7 +23,7 @@ import unittest
 
 import tensorflow as tf  # pylint: disable=g-bad-import-order
 
-from official.utils.logs import hooks_helper
+from brokenegg_transformer.utils.logs import hooks_helper
 from official.utils.misc import keras_utils
 
 
