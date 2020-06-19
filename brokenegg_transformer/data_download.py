@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 import random
-import tarfile
+import gzip
 
 # pylint: disable=g-bad-import-order
 from absl import app as absl_app
@@ -32,7 +32,6 @@ from six.moves import urllib
 from six.moves import zip
 import tensorflow.compat.v1 as tf
 
-from brokenegg_transformer.utils import tokenizer
 from brokenegg_transformer.utils.flags import core as flags_core
 # pylint: enable=g-bad-import-order
 
@@ -43,103 +42,42 @@ from brokenegg_transformer.utils.flags import core as flags_core
 # min_count is the minimum number of times a token must appear in the data
 # before it is added to the vocabulary. "Best min count" refers to the value
 # that generates a vocabulary set that is closest in size to _TARGET_VOCAB_SIZE.
-_TRAIN_DATA_SOURCES = [
-    {
-        "url": "http://data.statmt.org/wmt17/translation-task/"
-               "training-parallel-nc-v12.tgz",
-        "input": "news-commentary-v12.de-en.en",
-        "target": "news-commentary-v12.de-en.de",
-    },
-    {
-        "url": "http://www.statmt.org/wmt13/training-parallel-commoncrawl.tgz",
-        "input": "commoncrawl.de-en.en",
-        "target": "commoncrawl.de-en.de",
-    },
-    {
-        "url": "http://www.statmt.org/wmt13/training-parallel-europarl-v7.tgz",
-        "input": "europarl-v7.de-en.en",
-        "target": "europarl-v7.de-en.de",
-    },
-]
-# Use pre-defined minimum count to generate subtoken vocabulary.
-_TRAIN_DATA_MIN_COUNT = 6
+_WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/WikiMatrix.%s-%s.tsv.gz"
 
-_EVAL_DATA_SOURCES = [
-    {
-        "url": "http://data.statmt.org/wmt17/translation-task/dev.tgz",
-        "input": "newstest2013.en",
-        "target": "newstest2013.de",
-    }
-]
-
-_TEST_DATA_SOURCES = [
-    {
-        "url": ("https://storage.googleapis.com/tf-perf-public/"
-                "official_transformer/test_data/newstest2014.tgz"),
-        "input": "newstest2014.en",
-        "target": "newstest2014.de",
-    }
+_WIKIMATRIX_LANG_PAIRS = [
+  'en-es', 'en-ja', 'es-ja'
 ]
 
 # Vocabulary constants
-_TARGET_VOCAB_SIZE = 32768  # Number of subtokens in the vocabulary list.
-_TARGET_THRESHOLD = 327  # Accept vocabulary if size is within this threshold
-VOCAB_FILE = "vocab.ende.%d" % _TARGET_VOCAB_SIZE
+VOCAB_FILE = "spm.en-es-ja.spm64k.model"
 
 # Strings to inclue in the generated files.
-_PREFIX = "wmt32k"
+_PREFIX = "brokenegg"
 _TRAIN_TAG = "train"
 _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # evaluation datasets are tagged as "dev" for development.
 
 # Number of files to split train and evaluation data
-_TRAIN_SHARDS = 100
+_TRAIN_SHARDS = 30
 _EVAL_SHARDS = 1
+_TRAIN_EVAL_RATIO = 10
 
-
-def find_file(path, filename, max_depth=5):
-  """Returns full filepath if the file is in path or a subdirectory."""
-  for root, dirs, files in os.walk(path):
-    if filename in files:
-      return os.path.join(root, filename)
-
-    # Don't search past max_depth
-    depth = root[len(path) + 1:].count(os.sep)
-    if depth > max_depth:
-      del dirs[:]  # Clear dirs
-  return None
+UNK = 0
+SOS = 1
+EOS = 2
 
 
 ###############################################################################
 # Download and extraction functions
 ###############################################################################
-def get_raw_files(raw_dir, data_source):
-  """Return raw files from source. Downloads/extracts if needed.
-
-  Args:
-    raw_dir: string directory to store raw files
-    data_source: dictionary with
-      {"url": url of compressed dataset containing input and target files
-       "input": file with data in input language
-       "target": file with data in target language}
-
-  Returns:
-    dictionary with
-      {"inputs": list of files containing data in input language
-       "targets": list of files containing corresponding data in target language
-      }
-  """
-  raw_files = {
-      "inputs": [],
-      "targets": [],
-  }  # keys
-  for d in data_source:
-    input_file, target_file = download_and_extract(
-        raw_dir, d["url"], d["input"], d["target"])
-    raw_files["inputs"].append(input_file)
-    raw_files["targets"].append(target_file)
-  return raw_files
-
+def get_source_urls(raw_dir, url_template, lang_pairs):
+  res = []
+  for lang_pair in lang_pairs:
+    lang1, lang2 = lang_pair.split('-')
+    url = _WIKIMATRIX_URL_TEMPLATE % (lang1, lang2)
+    filename = download_from_url(raw_dir, url)
+    res.append((lang1, lang2, filename))
+  return res
 
 def download_report_hook(count, block_size, total_size):
   """Report hook for download progress.
@@ -164,9 +102,8 @@ def download_from_url(path, url):
     Full path to downloaded file
   """
   filename = six.ensure_str(url).split("/")[-1]
-  found_file = find_file(path, filename, max_depth=0)
-  if found_file is None:
-    filename = os.path.join(path, filename)
+  filename = os.path.join(path, filename)
+  if not tf.io.gfile.exists(filename):
     logging.info("Downloading from %s to %s." % (url, filename))
     inprogress_filepath = six.ensure_str(filename) + ".incomplete"
     inprogress_filepath, _ = urllib.request.urlretrieve(
@@ -176,103 +113,61 @@ def download_from_url(path, url):
     tf.gfile.Rename(inprogress_filepath, filename)
     return filename
   else:
-    logging.info("Already downloaded: %s (at %s)." % (url, found_file))
-    return found_file
+    logging.info("Already downloaded: %s (at %s)." % (url, filename))
+    return filename
 
 
-def download_and_extract(path, url, input_filename, target_filename):
-  """Extract files from downloaded compressed archive file.
+def get_vocab_file(raw_dir, data_dir, vocab_file):
+  import sentencepiece as spm
 
-  Args:
-    path: string directory where the files will be downloaded
-    url: url containing the compressed input and target files
-    input_filename: name of file containing data in source language
-    target_filename: name of file containing data in target language
+  for postfix in '.model', '.vocab':
+    filename = os.path.join(data_dir, vocab_file.rstrip('.model') + postfix)
+    if not tf.io.gfile.exists(data_dir):
+      raise ValueError("Creating vocab file is not implemented.")
+    if data_dir.startswith('gs://'):
+      local_filename = os.path.join(raw_dir, vocab_file.rstrip('.model') + postfix)
+      if not tf.io.gfile.exists(local_filename):
+        tf.io.gfile.copy(filename, local_filename, overwrite=False)
 
-  Returns:
-    Full paths to extracted input and target files.
+  if data_dir.startswith('gs://'):
+    local_filename = os.path.join(raw_dir, vocab_file)
+  else:
+    local_filename = os.path.join(data_dir, vocab_file)
 
-  Raises:
-    OSError: if the the download/extraction fails.
-  """
-  # Check if extracted files already exist in path
-  input_file = find_file(path, input_filename)
-  target_file = find_file(path, target_filename)
-  if input_file and target_file:
-    logging.info("Already downloaded and extracted %s." % url)
-    return input_file, target_file
-
-  # Download archive file if it doesn't already exist.
-  compressed_file = download_from_url(path, url)
-
-  # Extract compressed files
-  logging.info("Extracting %s." % compressed_file)
-  with tarfile.open(compressed_file, "r:gz") as corpus_tar:
-    corpus_tar.extractall(path)
-
-  # Return file paths of the requested files.
-  input_file = find_file(path, input_filename)
-  target_file = find_file(path, target_filename)
-
-  if input_file and target_file:
-    return input_file, target_file
-
-  raise OSError("Download/extraction failed for url %s to path %s" %
-                (url, path))
-
-
-def txt_line_iterator(path):
-  """Iterate through lines of file."""
-  with tf.io.gfile.GFile(path) as f:
-    for line in f:
-      yield line.strip()
-
-
-def compile_files(raw_dir, raw_files, tag):
-  """Compile raw files into a single file for each language.
-
-  Args:
-    raw_dir: Directory containing downloaded raw files.
-    raw_files: Dict containing filenames of input and target data.
-      {"inputs": list of files containing data in input language
-       "targets": list of files containing corresponding data in target language
-      }
-    tag: String to append to the compiled filename.
-
-  Returns:
-    Full path of compiled input and target files.
-  """
-  logging.info("Compiling files with tag %s." % tag)
-  filename = "%s-%s" % (_PREFIX, tag)
-  input_compiled_file = os.path.join(raw_dir,
-                                     six.ensure_str(filename) + ".lang1")
-  target_compiled_file = os.path.join(raw_dir,
-                                      six.ensure_str(filename) + ".lang2")
-
-  with tf.io.gfile.GFile(input_compiled_file, mode="w") as input_writer:
-    with tf.io.gfile.GFile(target_compiled_file, mode="w") as target_writer:
-      for i in range(len(raw_files["inputs"])):
-        input_file = raw_files["inputs"][i]
-        target_file = raw_files["targets"][i]
-
-        logging.info("Reading files %s and %s." % (input_file, target_file))
-        write_file(input_writer, input_file)
-        write_file(target_writer, target_file)
-  return input_compiled_file, target_compiled_file
-
-
-def write_file(writer, filename):
-  """Write all of lines from file using the writer."""
-  for line in txt_line_iterator(filename):
-    writer.write(line)
-    writer.write("\n")
+  print('Loading fron %s' % local_filename)
+  sp = spm.SentencePieceProcessor()
+  sp.load(local_filename)
+  return sp
 
 
 ###############################################################################
 # Data preprocessing
 ###############################################################################
+def all_langs(lang_pairs):
+  langs = set()
+  for langpair in lang_pairs:
+    inputs_lang, targets_lang = langpair.split('-')
+    langs.add(inputs_lang)
+    langs.add(targets_lang)
+  return sorted(list(langs))
+
+
+def get_lang_map(subtokenizer, lang_pairs):
+  langs = all_langs(lang_pairs)
+  offset = subtokenizer.vocab_size()
+  return {v: offset + k for k, v in enumerate(langs)}
+
+
+def spm_encode(subtokenizer, text, sos=None, eos=EOS):
+  encoded = subtokenizer.encode_as_ids(text)
+  if sos is not None:
+    encoded = [sos] + encoded
+  encoded = encoded + [eos]
+  return encoded
+
+
 def encode_and_save_files(
-    subtokenizer, data_dir, raw_files, tag, total_shards):
+    subtokenizer, data_dir, raw_files, total_train_shards, total_eval_shards, lang_map, train_eval_ratio=100):
   """Save data from files as encoded Examples in TFrecord format.
 
   Args:
@@ -287,31 +182,44 @@ def encode_and_save_files(
     List of all files produced.
   """
   # Create a file for each shard.
-  filepaths = [shard_filename(data_dir, tag, n + 1, total_shards)
-               for n in range(total_shards)]
+  train_filepaths = [shard_filename(data_dir, _TRAIN_TAG, n + 1, total_train_shards)
+               for n in range(total_train_shards)]
+  eval_filepaths = [shard_filename(data_dir, _EVAL_TAG, n + 1, total_eval_shards)
+               for n in range(total_eval_shards)]
 
-  if all_exist(filepaths):
-    logging.info("Files with tag %s already exist." % tag)
-    return filepaths
+  if all_exist(train_filepaths + eval_filepaths):
+    logging.info("Files already exist.")
+    return train_filepaths, eval_filepaths
 
-  logging.info("Saving files with tag %s." % tag)
-  input_file = raw_files[0]
-  target_file = raw_files[1]
+  logging.info("Saving files.")
 
   # Write examples to each shard in round robin order.
-  tmp_filepaths = [six.ensure_str(fname) + ".incomplete" for fname in filepaths]
-  writers = [tf.python_io.TFRecordWriter(fname) for fname in tmp_filepaths]
+  tmp_train_filepaths = [six.ensure_str(fname) + ".incomplete" for fname in train_filepaths]
+  tmp_eval_filepaths = [six.ensure_str(fname) + ".incomplete" for fname in eval_filepaths]
+  train_writers = [tf.python_io.TFRecordWriter(fname) for fname in tmp_train_filepaths]
+  eval_writers = [tf.python_io.TFRecordWriter(fname) for fname in tmp_eval_filepaths]
+  writers = train_writers * train_eval_ratio + eval_writers
+  total_shards = len(writers)
   counter, shard = 0, 0
-  for counter, (input_line, target_line) in enumerate(zip(
-      txt_line_iterator(input_file), txt_line_iterator(target_file))):
-    if counter > 0 and counter % 100000 == 0:
-      logging.info("\tSaving case %d." % counter)
-    example = dict_to_example(
-        {"inputs": subtokenizer.encode(input_line, add_eos=True),
-         "targets": subtokenizer.encode(target_line, add_eos=True)})
-    writers[shard].write(example.SerializeToString())
-    shard = (shard + 1) % total_shards
-  for writer in writers:
+  for lang1, lang2, raw_file in raw_files:
+    logging.info('Reading %s' % raw_file)
+    lang2_sos = lang_map.get(lang2, EOS)
+
+    with gzip.open(raw_file, 'rt') as f:
+      for counter, line in enumerate(f):
+        parts = line.rstrip('\r\n').split('\t')
+        if counter > 0 and counter % 100000 == 0:
+          logging.info("\tSaving case %d." % counter)
+
+        input_line = parts[1]
+        target_line = parts[2]
+        example = dict_to_example(
+            {"inputs": spm_encode(subtokenizer, input_line, sos=None),
+            "targets": spm_encode(subtokenizer, target_line, sos=lang2_sos)})
+        writers[shard].write(example.SerializeToString())
+
+        shard = (shard + 1) % total_shards
+  for writer in train_writers + eval_writers:
     writer.close()
 
   for tmp_name, final_name in zip(tmp_filepaths, filepaths):
@@ -382,34 +290,24 @@ def main(unused_argv):
   make_dir(FLAGS.data_dir)
 
   # Download test_data
-  logging.info("Step 1/5: Downloading test data")
-  get_raw_files(FLAGS.data_dir, _TEST_DATA_SOURCES)
+  logging.info("Step 1/4: Downloading test data")
+  logging.info("Skipping downloading. We don't have test data.")
+  #get_raw_files(FLAGS.data_dir, _TEST_DATA_SOURCES)
 
   # Get paths of download/extracted training and evaluation files.
-  logging.info("Step 2/5: Downloading data from source")
-  train_files = get_raw_files(FLAGS.raw_dir, _TRAIN_DATA_SOURCES)
-  eval_files = get_raw_files(FLAGS.raw_dir, _EVAL_DATA_SOURCES)
+  logging.info("Step 2/4: Downloading data from source")
+  train_files = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, _WIKIMATRIX_LANG_PAIRS)
 
   # Create subtokenizer based on the training files.
-  logging.info("Step 3/5: Creating subtokenizer and building vocabulary")
-  train_files_flat = train_files["inputs"] + train_files["targets"]
-  vocab_file = os.path.join(FLAGS.data_dir, VOCAB_FILE)
-  subtokenizer = tokenizer.Subtokenizer.init_from_files(
-      vocab_file, train_files_flat, _TARGET_VOCAB_SIZE, _TARGET_THRESHOLD,
-      min_count=None if FLAGS.search else _TRAIN_DATA_MIN_COUNT)
-
-  logging.info("Step 4/5: Compiling training and evaluation data")
-  compiled_train_files = compile_files(FLAGS.raw_dir, train_files, _TRAIN_TAG)
-  compiled_eval_files = compile_files(FLAGS.raw_dir, eval_files, _EVAL_TAG)
+  logging.info("Step 3/4: Creating sentencepiece and building vocabulary")
+  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, VOCAB_FILE)
 
   # Tokenize and save data as Examples in the TFRecord format.
-  logging.info("Step 5/5: Preprocessing and saving data")
-  train_tfrecord_files = encode_and_save_files(
-      subtokenizer, FLAGS.data_dir, compiled_train_files, _TRAIN_TAG,
-      _TRAIN_SHARDS)
-  encode_and_save_files(
-      subtokenizer, FLAGS.data_dir, compiled_eval_files, _EVAL_TAG,
-      _EVAL_SHARDS)
+  logging.info("Step 4/4: Preprocessing and saving data")
+  lang_map = get_lang_map(subtokenizer, _WIKIMATRIX_LANG_PAIRS)
+  train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+      subtokenizer, FLAGS.data_dir, train_files,
+      _TRAIN_SHARDS, _EVAL_SHARDS, lang_map, train_eval_ratio=_TRAIN_EVAL_RATIO)
 
   for fname in train_tfrecord_files:
     shuffle_records(fname)
@@ -418,18 +316,13 @@ def main(unused_argv):
 def define_data_download_flags():
   """Add flags specifying data download arguments."""
   flags.DEFINE_string(
-      name="data_dir", short_name="dd", default="/tmp/translate_ende",
+      name="data_dir", short_name="dd", default="/tmp/brokenegg_transformer",
       help=flags_core.help_wrap(
           "Directory for where the translate_ende_wmt32k dataset is saved."))
   flags.DEFINE_string(
-      name="raw_dir", short_name="rd", default="/tmp/translate_ende_raw",
+      name="raw_dir", short_name="rd", default="/tmp/brokenegg_transformer",
       help=flags_core.help_wrap(
           "Path where the raw data will be downloaded and extracted."))
-  flags.DEFINE_bool(
-      name="search", default=False,
-      help=flags_core.help_wrap(
-          "If set, use binary search to find the vocabulary set with size"
-          "closest to the target size (%d)." % _TARGET_VOCAB_SIZE))
 
 
 if __name__ == "__main__":
