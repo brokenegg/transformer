@@ -58,6 +58,9 @@ BASE_PARAMS = defaultdict(
     use_tpu=False,
     static_batch=False,
     allow_ffn_pad=True,
+
+    # BrokenEgg extension
+    targets_with_sos=True,
 )
 
 BIG_PARAMS = BASE_PARAMS.copy()

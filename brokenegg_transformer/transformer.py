@@ -198,15 +198,21 @@ class Transformer(tf.keras.Model):
       float32 tensor with shape [batch_size, target_length, vocab_size]
     """
     with tf.name_scope("decode"):
-      # Prepare inputs to decoder layers by shifting targets, adding positional
-      # encoding and applying dropout.
-      decoder_inputs = self.embedding_softmax_layer(targets)
-      decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
-      attention_bias = tf.cast(attention_bias, self.params["dtype"])
-      with tf.name_scope("shift_targets"):
-        # Shift targets to the right, and remove the last element
-        decoder_inputs = tf.pad(decoder_inputs,
-                                [[0, 0], [1, 0], [0, 0]])[:, :-1, :]
+      if self.params["targets_with_sos"]:
+        decoder_inputs = self.embedding_softmax_layer(targets[:, :-1, :])
+        decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
+        attention_bias = tf.cast(attention_bias, self.params["dtype"])
+      else:
+        assert False
+        # Prepare inputs to decoder layers by shifting targets, adding positional
+        # encoding and applying dropout.
+        decoder_inputs = self.embedding_softmax_layer(targets)
+        decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
+        attention_bias = tf.cast(attention_bias, self.params["dtype"])
+        with tf.name_scope("shift_targets"):
+          # Shift targets to the right, and remove the last element
+          decoder_inputs = tf.pad(decoder_inputs,
+                                  [[0, 0], [1, 0], [0, 0]])[:, :-1, :]
       with tf.name_scope("add_pos_encoding"):
         length = tf.shape(decoder_inputs)[1]
         pos_encoding = model_utils.get_position_encoding(
