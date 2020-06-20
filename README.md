@@ -1,3 +1,11 @@
+# BrokenEgg Transformer Translation Model
+
+BrokenEgg Transformer is Transformer model with reduced dependency, which is forked from
+[Tensorflow Model Garden](https://github.com/tensorflow/models/tree/93490036e00f37ecbe6693b9ff4ae488bb8e9270/official/nlp/transformer).
+The sample training script uses
+[WikiMatrix](https://ai.facebook.com/blog/wikimatrix/)
+to build multilanguage translation model.
+
 # Transformer Translation Model
 This is an implementation of the Transformer translation model as described in
 the [Attention is All You Need](https://arxiv.org/abs/1706.03762) paper. The
