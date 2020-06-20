@@ -265,7 +265,7 @@ class TransformerTask(object):
         with tf.GradientTape() as tape:
           logits = model([inputs, targets], training=True)
           if params["targets_with_sos"]:
-            targets = targets[:, 1:, :]
+            targets = targets[:, 1:]
           loss = metrics.transformer_loss(logits, targets,
                                           params["label_smoothing"],
                                           params["vocab_size"])

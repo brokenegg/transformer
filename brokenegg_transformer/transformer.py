@@ -199,7 +199,7 @@ class Transformer(tf.keras.Model):
     """
     with tf.name_scope("decode"):
       if self.params["targets_with_sos"]:
-        decoder_inputs = self.embedding_softmax_layer(targets[:, :-1, :])
+        decoder_inputs = self.embedding_softmax_layer(targets[:, :-1])
         decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
         attention_bias = tf.cast(attention_bias, self.params["dtype"])
       else:
