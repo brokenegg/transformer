@@ -18,15 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-import re
-import sys
-import unicodedata
+import os
 
-import numpy as np
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tempfile
 
 PAD = "<pad>"
 PAD_ID = 0
@@ -38,10 +33,25 @@ RESERVED_TOKENS = [PAD, EOS]
 class Subtokenizer(object):
   """Encodes and decodes strings to/from integer IDs."""
 
-  def __init__(self, vocab_file, reserved_tokens=None):
+  def __init__(self, vocab_file, tmp_dir=None, reserved_tokens=None):
     """Initializes class, creating a vocab file if data_files is provided."""
-    tf.compat.v1.logging.info("Initializing Subtokenizer from file %s." %
+    import sentencepiece as spm
+    tf.logging.info("Initializing Subtokenizer from file %s." %
                               vocab_file)
+    self.sp = spm.SentencePieceProcessor()
+
+    if vocab_file.startswith('gs://'):
+      with tempfile.TemporaryDirectory() as tmp_dir:
+        for postfix in '.model', '.vocab':
+          filename = vocab_file.rstrip('.model') + postfix
+          if not tf.io.gfile.exists(filename):
+            raise ValueError("File not found.")
+          local_filename = os.path.join(tmp_dir, os.path.basename(filename))
+          tf.io.gfile.copy(filename, local_filename, overwrite=False)
+        local_filename = os.path.join(tmp_dir, os.path.basename(vocab_file))
+        self.sp.load(local_filename)
+    else:
+      self.sp.load(vocab_file)
 
   @staticmethod
   def init_from_files(
@@ -51,8 +61,12 @@ class Subtokenizer(object):
 
   def encode(self, raw_string, add_eos=False):
     """Encodes a string into a list of int subtoken ids."""
-    raise NotImplementedError()
+    encoded = self.sp.encode_as_ids(raw_string)
+    if add_eos:
+      encoded.append([EOS_ID])
+    return encoded
 
   def decode(self, subtokens):
     """Converts list of int subtokens ids into a string."""
-    raise NotImplementedError()
+    decoded = self.sp.decode_ids(subtokens)
+    return decoded
