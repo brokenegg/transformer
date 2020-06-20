@@ -312,7 +312,7 @@ class Transformer(tf.keras.Model):
         max_decode_length, training)
 
     # Create initial set of IDs that will be passed into symbols_to_logits_fn.
-    initial_ids = tf.ones([batch_size], dtype=tf.int32) * 64002
+    initial_ids = tf.ones([batch_size], dtype=tf.int32) * int(os.environ.get('BROKENEGG_LANG', '0'))
 
     # Create cache storing decoder attention values for each layer.
     # pylint: disable=g-complex-comprehension
