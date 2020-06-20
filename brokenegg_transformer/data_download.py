@@ -33,7 +33,7 @@ from six.moves import zip
 import tensorflow.compat.v1 as tf
 
 from brokenegg_transformer.utils.flags import core as flags_core
-from brokenegg_transformer.utils.tokenizer
+from brokenegg_transformer.utils import tokenizer
 # pylint: enable=g-bad-import-order
 
 # Data sources for training/evaluating the transformer translation model.
