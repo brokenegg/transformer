@@ -23,11 +23,11 @@ import os
 import tensorflow.compat.v1 as tf
 import tempfile
 
-PAD = "<pad>"
+PAD = "<unk>"
 PAD_ID = 0
-EOS = "<sos>"
-EOS_ID = 1
-EOS = "<eos>"
+SOS = "<s>"
+SOS_ID = 1
+EOS = "</s>"
 EOS_ID = 2
 RESERVED_TOKENS = [PAD, SOS, EOS]
 
