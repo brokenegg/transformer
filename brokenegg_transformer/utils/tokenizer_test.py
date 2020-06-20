@@ -21,8 +21,8 @@ import tensorflow as tf
 class SubtokenizerTest(tf.test.TestCase):
 
   def test_simple(self):
-    path = 'gs://brokenegg/data/brokenegg/spm.en-es-ja.spm64k.model'
-    path = '/tmp/brokenegg_transformer/spm.en-es-ja.spm64k.model'
+    path = 'gs://brokenegg/data/brokenegg/brokenegg.en-es-ja.spm64k.model'
+    path = '/tmp/brokenegg_transformer/brokenegg.en-es-ja.spm64k.model'
     subtokenizer = tokenizer.Subtokenizer(path)
     text = "Hello, world! こんにちはです。"
     encoded = subtokenizer.encode(text)

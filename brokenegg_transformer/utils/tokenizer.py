@@ -25,9 +25,11 @@ import tempfile
 
 PAD = "<pad>"
 PAD_ID = 0
-EOS = "<EOS>"
+EOS = "<sos>"
 EOS_ID = 1
-RESERVED_TOKENS = [PAD, EOS]
+EOS = "<eos>"
+EOS_ID = 2
+RESERVED_TOKENS = [PAD, SOS, EOS]
 
 
 class Subtokenizer(object):

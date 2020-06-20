@@ -33,6 +33,7 @@ from six.moves import zip
 import tensorflow.compat.v1 as tf
 
 from brokenegg_transformer.utils.flags import core as flags_core
+from brokenegg_transformer.utils.tokenizer
 # pylint: enable=g-bad-import-order
 
 # Data sources for training/evaluating the transformer translation model.
@@ -48,23 +49,19 @@ _WIKIMATRIX_LANG_PAIRS = [
   'en-es', 'en-ja', 'es-ja'
 ]
 
-# Vocabulary constants
-VOCAB_FILE = "spm.en-es-ja.spm64k.model"
-
 # Strings to inclue in the generated files.
 _PREFIX = "brokenegg"
 _TRAIN_TAG = "train"
 _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # evaluation datasets are tagged as "dev" for development.
 
+# Vocabulary constants
+_VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
+
 # Number of files to split train and evaluation data
 _TRAIN_SHARDS = 30
 _EVAL_SHARDS = 1
 _TRAIN_EVAL_RATIO = 10
-
-UNK = 0
-SOS = 1
-EOS = 2
 
 
 ###############################################################################
@@ -158,7 +155,7 @@ def get_lang_map(subtokenizer, lang_pairs):
   return {v: offset + k for k, v in enumerate(langs)}
 
 
-def spm_encode(subtokenizer, text, sos=None, eos=EOS):
+def spm_encode(subtokenizer, text, sos=None, eos=tokenizer.EOS_ID):
   encoded = subtokenizer.encode_as_ids(text)
   if sos is not None:
     encoded = [sos] + encoded
@@ -203,7 +200,7 @@ def encode_and_save_files(
   counter, shard = 0, 0
   for lang1, lang2, raw_file in raw_files:
     logging.info('Reading %s' % raw_file)
-    lang2_sos = lang_map.get(lang2, EOS)
+    lang2_sos = lang_map.get(lang2, tokenizer.SOS_ID)
 
     with gzip.open(raw_file, 'rt') as f:
       for counter, line in enumerate(f):
@@ -300,7 +297,7 @@ def main(unused_argv):
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/4: Creating sentencepiece and building vocabulary")
-  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, VOCAB_FILE)
+  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, _VOCAB_FILE)
 
   # Tokenize and save data as Examples in the TFRecord format.
   logging.info("Step 4/4: Preprocessing and saving data")
