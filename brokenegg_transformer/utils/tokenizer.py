@@ -72,3 +72,7 @@ class Subtokenizer(object):
     """Converts list of int subtokens ids into a string."""
     decoded = self.sp.decode_ids(subtokens)
     return decoded
+
+  @property
+  def vocab_size(self):
+    return self.sp.vocab_size()
