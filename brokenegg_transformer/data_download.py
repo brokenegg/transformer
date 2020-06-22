@@ -62,7 +62,7 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 _VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
 
 # Number of files to split train and evaluation data
-_TRAIN_SHARDS = 80
+_TRAIN_SHARDS = 40
 _EVAL_SHARDS = 1
 _TRAIN_EVAL_RATIO = 10
 
@@ -187,8 +187,8 @@ def encode_and_save_files(
         if counter > 0 and counter % 100000 == 0:
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
 
-        encoded_input = subtokenizer.encode(parts[1])
-        encoded_target = subtokenizer.encode(parts[2])
+        encoded_input = subtokenizer.encode(parts[1], add_eos=True)
+        encoded_target = subtokenizer.encode(parts[2], add_eos=True)
         if rate is None or random.random() < rate:
           example = dict_to_example(
               {"inputs": encoded_input,
@@ -214,8 +214,8 @@ def encode_and_save_files(
         if counter > 0 and counter % 100000 == 0:
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
 
-        encoded_input = subtokenizer.encode(parts[0])
-        encoded_target = subtokenizer.encode(parts[1])
+        encoded_input = subtokenizer.encode(parts[0], add_eos=True)
+        encoded_target = subtokenizer.encode(parts[1], add_eos=True)
         example = dict_to_example(
             {"inputs": encoded_input,
             "targets": [tokenizer.SOS_ID] + encoded_target})
