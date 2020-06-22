@@ -65,7 +65,7 @@ class Subtokenizer(object):
     """Encodes a string into a list of int subtoken ids."""
     encoded = self.sp.encode_as_ids(raw_string)
     if add_eos:
-      encoded.append([EOS_ID])
+      encoded.append(EOS_ID)
     return encoded
 
   def decode(self, subtokens):
