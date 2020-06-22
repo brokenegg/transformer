@@ -232,6 +232,7 @@ class TransformerTask(object):
       # experimental_distribute_datasets_from_function requires
       # per-replica/local batch size.
       params["batch_size"] /= self.distribution_strategy.num_replicas_in_sync
+      logging.info("**** Batch size is %d,%d" % (params["batch_size"], self.distribution_strategy.num_replicas_in_sync))
       train_ds = (
           self.distribution_strategy
           .experimental_distribute_datasets_from_function(
