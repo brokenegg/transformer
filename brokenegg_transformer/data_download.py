@@ -62,7 +62,7 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 _VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
 
 # Number of files to split train and evaluation data
-_TRAIN_SHARDS = 40
+_TRAIN_SHARDS = 80
 _EVAL_SHARDS = 1
 _TRAIN_EVAL_RATIO = 10
 
