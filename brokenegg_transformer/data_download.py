@@ -186,7 +186,6 @@ def encode_and_save_files(
         parts = line.rstrip('\r\n').split('\t')
         if counter > 0 and counter % 100000 == 0:
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
-          break
 
         encoded_input = subtokenizer.encode(parts[1])
         encoded_target = subtokenizer.encode(parts[2])
@@ -214,7 +213,6 @@ def encode_and_save_files(
         parts = line.rstrip('\r\n').split('\t')
         if counter > 0 and counter % 100000 == 0:
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
-          break
 
         encoded_input = subtokenizer.encode(parts[0])
         encoded_target = subtokenizer.encode(parts[1])
