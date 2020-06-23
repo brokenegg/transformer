@@ -62,7 +62,7 @@ def create_model(params, is_train, has_initial_ids=False):
       if has_initial_ids:
         initial_ids = tf.keras.layers.Input((), dtype="int32", name="initial_ids")
       else:
-        initial_ids = False
+        initial_ids = None
       internal_model = Transformer(params, name="transformer_v2")
       ret = internal_model([inputs], training=is_train, initial_ids=initial_ids)
       outputs, scores = ret["outputs"], ret["scores"]
@@ -318,6 +318,8 @@ class Transformer(tf.keras.Model):
     # Create initial set of IDs that will be passed into symbols_to_logits_fn.
     if initial_ids is None:
       initial_ids = tf.zeros([batch_size], dtype=tf.int32)
+    else:
+      initial_ids.set_shape([batch_size])
 
     # Create cache storing decoder attention values for each layer.
     # pylint: disable=g-complex-comprehension
