@@ -318,8 +318,6 @@ class Transformer(tf.keras.Model):
     # Create initial set of IDs that will be passed into symbols_to_logits_fn.
     if initial_ids is None:
       initial_ids = tf.zeros([batch_size], dtype=tf.int32)
-    else:
-      initial_ids.set_shape([batch_size])
 
     # Create cache storing decoder attention values for each layer.
     # pylint: disable=g-complex-comprehension
