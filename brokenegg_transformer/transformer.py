@@ -60,7 +60,7 @@ def create_model(params, is_train, has_initial_ids=False):
     else:
       inputs = tf.keras.layers.Input((None,), dtype="int64", name="inputs")
       if has_initial_ids:
-        initial_ids = tf.keras.layers.Input((), dtype="int64", name="initial_ids")
+        initial_ids = tf.keras.layers.Input((), dtype="int32", name="initial_ids")
       else:
         initial_ids = False
       internal_model = Transformer(params, name="transformer_v2")
