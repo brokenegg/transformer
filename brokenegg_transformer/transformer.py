@@ -36,7 +36,7 @@ from brokenegg_transformer.utils.tokenizer import EOS_ID
 # pylint: disable=not-callable
 
 
-def create_model(params, is_train):
+def create_model(params, is_train, has_initial_ids=False):
   """Creates transformer model."""
   with tf.name_scope("model"):
     if is_train:
@@ -59,10 +59,14 @@ def create_model(params, is_train):
 
     else:
       inputs = tf.keras.layers.Input((None,), dtype="int64", name="inputs")
+      if has_initial_ids:
+        initial_ids = tf.keras.layers.Input((), dtype="int64", name="initial_ids")
+      else:
+        initial_ids = False
       internal_model = Transformer(params, name="transformer_v2")
-      ret = internal_model([inputs], training=is_train)
+      ret = internal_model([inputs], training=is_train, initial_ids=initial_ids)
       outputs, scores = ret["outputs"], ret["scores"]
-      return tf.keras.Model(inputs, [outputs, scores])
+      return tf.keras.Model([inputs, initial_ids], [outputs, scores])
 
 
 class Transformer(tf.keras.Model):
@@ -95,7 +99,7 @@ class Transformer(tf.keras.Model):
         "params": self.params,
     }
 
-  def call(self, inputs, training):
+  def call(self, inputs, training, initial_ids=None):
     """Calculate target logits or inferred target sequences.
 
     Args:
@@ -145,7 +149,7 @@ class Transformer(tf.keras.Model):
       # Generate output sequence if targets is None, or return logits if target
       # sequence is known.
       if targets is None:
-        return self.predict(encoder_outputs, attention_bias, training)
+        return self.predict(encoder_outputs, attention_bias, training, initial_ids=initial_ids)
       else:
         logits = self.decode(targets, encoder_outputs, attention_bias, training)
         return logits
@@ -295,7 +299,7 @@ class Transformer(tf.keras.Model):
 
     return symbols_to_logits_fn
 
-  def predict(self, encoder_outputs, encoder_decoder_attention_bias, training):
+  def predict(self, encoder_outputs, encoder_decoder_attention_bias, training, initial_ids=None):
     """Return predicted sequence."""
     encoder_outputs = tf.cast(encoder_outputs, self.params["dtype"])
     if self.params["padded_decode"]:
@@ -312,8 +316,8 @@ class Transformer(tf.keras.Model):
         max_decode_length, training)
 
     # Create initial set of IDs that will be passed into symbols_to_logits_fn.
-    import os
-    initial_ids = tf.ones([batch_size], dtype=tf.int32) * int(os.environ.get('BROKENEGG_LANG', '0'))
+    if initial_ids is None:
+      initial_ids = tf.zeros([batch_size], dtype=tf.int32)
 
     # Create cache storing decoder attention values for each layer.
     # pylint: disable=g-complex-comprehension

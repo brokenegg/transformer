@@ -381,7 +381,7 @@ class TransformerTask(object):
     flags_obj = self.flags_obj
 
     with tf.name_scope("model"):
-      model = transformer.create_model(params, is_train=False)
+      model = transformer.create_model(params, is_train=False, has_initial_ids=True)
       self._load_weights_if_possible(
           model, tf.train.latest_checkpoint(self.flags_obj.model_dir))
       model.summary()
