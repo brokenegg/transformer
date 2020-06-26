@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 # Variables
 
@@ -68,3 +69,38 @@ def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activat
         if activation is not None:
             y = activation(y)
         return y
+
+# Transformer layers
+
+def embedding_softmax_layer(inputs, hidden_size=512):
+    with variable_scope('embedding_shared_weights'):
+        with variable_scope('embedding_and_softmax'):
+            weights = get_variable('weights')
+            embedded_inputs = weights[inputs]
+            embedded_inputs *= hidden_size ** 0.5
+    return embedded_inputs
+
+def get_position_encoding(
+      length, hidden_size, min_timescale=1.0, max_timescale=1.0e4):
+    position = np.arange(length).astype(np.float32)
+    num_timescales = hidden_size // 2
+    log_timescale_increment = (
+        math.log(float(max_timescale) / float(min_timescale)) /
+        (np.array(num_timescales, np.float32) - 1))
+    inv_timescales = min_timescale * np.exp(
+        np.arange(num_timescales).astype(np.float32) * -log_timescale_increment)
+    scaled_time = np.expand_dims(position, 1) * np.expand_dims(inv_timescales, 0)
+    signal = np.concatenate([np.sin(scaled_time), np.cos(scaled_time)], axis=1)
+    return signal
+
+def pre_post_processing_wrapper(x, layer):
+    with variable_scope("pre_post_processing_wrapper"):
+        y = layer_norm(x)
+        y = layer(y)
+        return x + y
+        
+def feed_forward_network(x):
+    with variable_scope("feed_forward_network"):
+        output = dense_layer('filter_layer', x, subscripts='abc,cd->abd', activation=relu)
+        output = dense_layer('output_layer', output, subscripts='abc,cd->abd')
+    return output
