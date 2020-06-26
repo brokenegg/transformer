@@ -47,7 +47,7 @@ def relu(x):
     return (x >= 0).astype(np.float32) * x
     
 def softmax(x):
-    x_shift = x - np.expand_dims(np.mean(x, axis=-1), axis=-1)
+    x_shift = x - np.expand_dims(np.max(x, axis=-1), axis=-1)
     exp_x = np.exp(x_shift)
     s = np.sum(exp_x, axis=-1)
     return exp_x / np.expand_dims(s, axis=-1)
@@ -91,8 +91,12 @@ def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
 
                 return np.reshape(logits, [batch_size, length, vocab_size])
 
-def get_decoder_self_attention_bias(inputs):
-    return np.zeros_like(inputs)
+def get_decoder_self_attention_bias(length):
+    neg_inf = -1e9
+    valid_locs = np.tri(length)
+    valid_locs = np.reshape(valid_locs, [1, 1, length, length])
+    decoder_bias = neg_inf * (1.0 - valid_locs)
+    return decoder_bias
 
 def get_position_encoding(
       length, hidden_size, min_timescale=1.0, max_timescale=1.0e4):
@@ -107,15 +111,17 @@ def get_position_encoding(
     signal = np.concatenate([np.sin(scaled_time), np.cos(scaled_time)], axis=1)
     return signal
 
-def pre_post_processing_wrapper(x, layer):
+def pre_post_processing_wrapper(layer, x, *args):
     with variable_scope("pre_post_processing_wrapper"):
         y = layer_norm(x, epsilon=1e-6)
-        y = layer(y)
+        y = layer(y, *args)
         return x + y
 
-def self_attention_layer(query_input, hidden_size=512, num_heads=8):
-    source_input = query_input
-    with variable_scope("self_attention"):
+def self_attention_layer(query_input, bias, name="self_attention", **args):
+    return attention_layer(query_input, query_input, bias, name=name, **args)
+
+def attention_layer(query_input, source_input, bias, name="attention", hidden_size=512, num_heads=8):
+    with variable_scope(name):
         query = dense_layer('query', query_input, use_bias=False)
         key = dense_layer('key', source_input, use_bias=False)
         value = dense_layer('value', source_input, use_bias=False)
@@ -124,13 +130,14 @@ def self_attention_layer(query_input, hidden_size=512, num_heads=8):
         query *= depth ** -0.5
 
         logits = np.einsum("BTNH,BFNH->BNFT", key, query)
+        if bias is not None:
+            logits += bias
         weights = softmax(logits)
         attention_output = np.einsum("BNFT,BTNH->BFNH", weights, value)
 
         attention_output = dense_layer('output_transform', attention_output,
                                        subscripts='abcd,cde->abe',
                                        use_bias=False)
-
     return attention_output
 
 def feed_forward_network(x):
@@ -147,17 +154,40 @@ def encoder_stack(encoder_inputs, num_layers=6):
             with variable_scope("layer_%d" % n):
                 with variable_scope("self_attention"):
                     encoder_inputs = pre_post_processing_wrapper(
-                        encoder_inputs, self_attention_layer)
+                        self_attention_layer,
+                        encoder_inputs,
+                        None)
                 with variable_scope("ffn"):
                     encoder_inputs = pre_post_processing_wrapper(
-                        encoder_inputs, feed_forward_network)
+                        feed_forward_network,
+                        encoder_inputs)
 
         return layer_norm(encoder_inputs, epsilon=1e-6)
 
 def decoder_stack(decoder_inputs,
-            encoder_outputs,
-            decoder_self_attention_bias, num_layers=6):
-    return decoder_inputs
+                  encoder_outputs,
+                  decoder_self_attention_bias,
+                  num_layers=6):
+    with variable_scope('decoder_stack'):
+        for n in range(num_layers):
+            with variable_scope("layer_%d" % n):
+                with variable_scope("self_attention"):
+                    decoder_inputs = pre_post_processing_wrapper(
+                        self_attention_layer,
+                        decoder_inputs,
+                        decoder_self_attention_bias)
+                with variable_scope("encdec_attention"):
+                    decoder_inputs = pre_post_processing_wrapper(
+                        attention_layer,
+                        decoder_inputs,
+                        encoder_outputs,
+                        None)
+                with variable_scope("ffn"):
+                    decoder_inputs = pre_post_processing_wrapper(
+                        feed_forward_network,
+                        decoder_inputs)
+
+        return layer_norm(decoder_inputs, epsilon=1e-6)
 
 def encode(inputs, hidden_size=512):
     with variable_scope('encode'):
