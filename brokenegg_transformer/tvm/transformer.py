@@ -1,3 +1,5 @@
+# Copyright Katsuya Iida.
+
 import numpy as np
 import math
 
@@ -72,13 +74,25 @@ def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activat
 
 # Transformer layers
 
-def embedding_softmax_layer(inputs, hidden_size=512):
+def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
     with variable_scope('embedding_shared_weights'):
         with variable_scope('embedding_and_softmax'):
-            weights = get_variable('weights')
-            embedded_inputs = weights[inputs]
-            embedded_inputs *= hidden_size ** 0.5
-    return embedded_inputs
+            shared_weights = get_variable('weights')
+            if mode == "embedding":
+                embedded_inputs = shared_weights[inputs]
+                embedded_inputs *= hidden_size ** 0.5
+                return embedded_inputs
+            elif mode == "linear":
+                vocab_size = shared_weights.shape[0]
+                batch_size = inputs.shape[0]
+                length = inputs.shape[1]
+                x = np.reshape(inputs, [-1, hidden_size])
+                logits = np.matmul(x, shared_weights.T, )
+
+                return np.reshape(logits, [batch_size, length, vocab_size])
+
+def get_decoder_self_attention_bias(inputs):
+    return np.zeros_like(inputs)
 
 def get_position_encoding(
       length, hidden_size, min_timescale=1.0, max_timescale=1.0e4):
@@ -95,12 +109,87 @@ def get_position_encoding(
 
 def pre_post_processing_wrapper(x, layer):
     with variable_scope("pre_post_processing_wrapper"):
-        y = layer_norm(x)
+        y = layer_norm(x, epsilon=1e-6)
         y = layer(y)
         return x + y
-        
+
+def self_attention_layer(query_input, hidden_size=512, num_heads=8):
+    source_input = query_input
+    with variable_scope("self_attention"):
+        query = dense_layer('query', query_input, use_bias=False)
+        key = dense_layer('key', source_input, use_bias=False)
+        value = dense_layer('value', source_input, use_bias=False)
+
+        depth = (hidden_size // num_heads)
+        query *= depth ** -0.5
+
+        logits = np.einsum("BTNH,BFNH->BNFT", key, query)
+        weights = softmax(logits)
+        attention_output = np.einsum("BNFT,BTNH->BFNH", weights, value)
+
+        attention_output = dense_layer('output_transform', attention_output,
+                                       subscripts='abcd,cde->abe',
+                                       use_bias=False)
+
+    return attention_output
+
 def feed_forward_network(x):
     with variable_scope("feed_forward_network"):
         output = dense_layer('filter_layer', x, subscripts='abc,cd->abd', activation=relu)
         output = dense_layer('output_layer', output, subscripts='abc,cd->abd')
     return output
+
+# Transformer
+
+def encoder_stack(encoder_inputs, num_layers=6):
+    with variable_scope('encoder_stack'):
+        for n in range(num_layers):
+            with variable_scope("layer_%d" % n):
+                with variable_scope("self_attention"):
+                    encoder_inputs = pre_post_processing_wrapper(
+                        encoder_inputs, self_attention_layer)
+                with variable_scope("ffn"):
+                    encoder_inputs = pre_post_processing_wrapper(
+                        encoder_inputs, feed_forward_network)
+
+        return layer_norm(encoder_inputs, epsilon=1e-6)
+
+def decoder_stack(decoder_inputs,
+            encoder_outputs,
+            decoder_self_attention_bias, num_layers=6):
+    return decoder_inputs
+
+def encode(inputs, hidden_size=512):
+    with variable_scope('encode'):
+        embedded_inputs = embedding_softmax_layer(inputs)
+        length = embedded_inputs.shape[1]
+        pos_encoding = get_position_encoding(length, hidden_size)
+        
+        encoder_inputs = embedded_inputs + pos_encoding
+
+        return encoder_stack(encoder_inputs)
+
+def decode(targets, encoder_outputs, hidden_size=512):
+    with variable_scope("encode"):
+        enbedded_inputs = embedding_softmax_layer(targets[:, :-1])
+
+    with variable_scope("decode"):
+        length = enbedded_inputs.shape[1]
+        pos_encoding = get_position_encoding(length, hidden_size)
+        decoder_inputs = enbedded_inputs + pos_encoding
+
+        decoder_self_attention_bias = get_decoder_self_attention_bias(length)
+        outputs = decoder_stack(
+            decoder_inputs,
+            encoder_outputs,
+            decoder_self_attention_bias)
+
+    with variable_scope("encode"):
+        logits = embedding_softmax_layer(outputs, mode="linear")
+
+    return logits
+
+def body(inputs, targets):
+    encoder_outputs = encode(inputs)
+    logits = decode(targets, encoder_outputs)
+    return logits
