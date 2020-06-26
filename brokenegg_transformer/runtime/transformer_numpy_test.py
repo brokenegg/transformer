@@ -1,12 +1,7 @@
 import unittest
 import tensorflow as tf
 import numpy as np
-from .transformer import *
-
-import brokenegg_transformer.tvm.transformer
-import imp
-imp.reload(brokenegg_transformer.tvm.transformer)
-from brokenegg_transformer.tvm.transformer import *
+from .transformer_numpy import *
 
 class TestTransformer(unittest.TestCase):
 
