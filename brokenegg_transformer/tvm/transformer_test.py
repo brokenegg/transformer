@@ -38,13 +38,13 @@ class TestTransformer(unittest.TestCase):
             with variable_scope('layer_normalization'):
                 set_variable('gamma', gamma)
                 set_variable('beta', beta)
-            y = layer_norm(x, epsilon=1e-6)
+            y = layer_norm(x, epsilon=1e-5)
 
         tf_layer_norm = tf.keras.layers.LayerNormalization(
-            epsilon=1e-6, dtype="float32")
+            epsilon=1e-5, dtype="float32")
         tf_layer_norm(x)
         tf_layer_norm.gamma.assign(gamma)
         tf_layer_norm.beta.assign(beta)
         z = tf_layer_norm(x)
 
-        self.assertArrayAlmostEqual(y, z)
+        self.assertArrayAlmostEqual(y, z, max_delta=1e-4)

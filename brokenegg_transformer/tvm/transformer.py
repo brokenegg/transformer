@@ -40,6 +40,24 @@ def list_variables():
 
 # Misc
 
+def relu(x):
+    return (x >= 0).astype(np.float32) * x
+    
+def softmax(x):
+    x_shift = x - np.expand_dims(np.mean(x, axis=-1), axis=-1)
+    exp_x = np.exp(x_shift)
+    s = np.sum(exp_x, axis=-1)
+    return exp_x / np.expand_dims(s, axis=-1)
+
+def layer_norm(inputs, epsilon=0.001):
+    with variable_scope('layer_normalization'):
+        mean = np.expand_dims(np.mean(inputs, axis=-1), axis=-1) 
+        var = np.expand_dims(np.var(inputs, axis=-1), axis=-1)
+        norm_inputs = (inputs - mean) / np.sqrt(var + epsilon)
+        gamma = get_variable('gamma')
+        beta = get_variable('beta')
+        return gamma * norm_inputs + beta
+
 def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activation=None):
     with variable_scope(name):
         kernel = get_variable('kernel')
@@ -50,20 +68,3 @@ def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activat
         if activation is not None:
             y = activation(y)
         return y
-    
-def relu(x):
-    return (x >= 0).astype(np.float32) * x
-    
-def softmax(x):
-    exp_x = np.exp(x)
-    s = np.sum(exp_x, axis=-1)
-    return exp_x / np.expand_dims(s, axis=len(x.shape)-1)
-
-def layer_norm(inputs, epsilon=0.001):
-    with variable_scope('layer_normalization'):
-        mean = np.expand_dims(np.mean(inputs, axis=-1), axis=-1) 
-        var = np.expand_dims(np.var(inputs, axis=-1), axis=-1)
-        norm_inputs = (inputs - mean) / np.sqrt(var + epsilon)
-        gamma = get_variable('gamma')
-        beta = get_variable('beta')
-        return gamma * norm_inputs + beta
