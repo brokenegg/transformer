@@ -52,6 +52,26 @@ def list_variables():
 
 # Misc
 
+def einsum(subscripts, a, b):
+  if subscripts == 'abc,cde->abde':
+    return tf.tensordot(a, b, axes=[[2], [0]])
+  elif subscripts ==  "BTNH,BFNH->BNFT":
+    a = tf.transpose(a, [0, 2, 3, 1])
+    b = tf.transpose(b, [0, 2, 1, 3])
+    return tf.matmul(b, a)
+  elif subscripts == "BNFT,BTNH->BFNH":
+    #a = tf.transpose(a, [0, 2, 3, 1])
+    b = tf.transpose(b, [0, 2, 1, 3])
+    c = tf.matmul(a, b)
+    return tf.transpose(c, [0, 2, 1, 3])
+  elif subscripts == 'abcd,cde->abe':
+    return tf.tensordot(a, b, axes=[[2,3], [0,1]])
+  elif subscripts == 'abc,cd->abd':
+    return tf.tensordot(a, b, axes=[[2], [0]])
+  else:
+    raise Exception(subscripts)
+    #return tf.einsum(subscripts, a, b)
+
 def layer_norm(inputs, epsilon=0.001):
   with variable_scope('layer_normalization'):
     mean = tf.expand_dims(tf.reduce_mean(inputs, axis=-1), axis=-1) 
@@ -64,7 +84,7 @@ def layer_norm(inputs, epsilon=0.001):
 def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activation=None):
   with variable_scope(name):
     kernel = get_variable('kernel')
-    y = tf.einsum(subscripts, inputs, kernel)
+    y = einsum(subscripts, inputs, kernel)
     if use_bias:
       bias = get_variable('bias')
       y += bias
@@ -162,11 +182,11 @@ def attention_layer(query_input, source_input, bias, name="attention", hidden_si
     depth = (hidden_size // num_heads)
     query *= depth ** -0.5
 
-    logits = tf.einsum("BTNH,BFNH->BNFT", key, query)
+    logits = einsum("BTNH,BFNH->BNFT", key, query)
     if bias is not None:
       logits += bias
     weights = tf.nn.softmax(logits)
-    attention_output = tf.einsum("BNFT,BTNH->BFNH", weights, value)
+    attention_output = einsum("BNFT,BTNH->BFNH", weights, value)
 
     attention_output = dense_layer('output_transform', attention_output,
                      subscripts='abcd,cde->abe',
@@ -267,8 +287,8 @@ def load_model(file):
   arr = np.load(file)
   set_variables(arr)
   @tf.function(input_signature=(
-    tf.TensorSpec(shape=[None, None], dtype=tf.int64),
-    tf.TensorSpec(shape=[None, None], dtype=tf.int64),)
+    tf.TensorSpec(shape=[1, 20], dtype=tf.int64),
+    tf.TensorSpec(shape=[1, 20], dtype=tf.int64),)
   )
   def f(inputs, targets):
     return body(inputs, targets)
