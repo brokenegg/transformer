@@ -293,8 +293,6 @@ class Transformer(tf.keras.layers.Layer):
     return logits
 
 def load_model_as_function(file):
-  assert tf.__version__.split('.')[0] == '2'
-  assert tf.__version__.split('.')[1] == '3'
   arr = np.load(file)
   set_variables(arr)
   @tf.function(input_signature=(
