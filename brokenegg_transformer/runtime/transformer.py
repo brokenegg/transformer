@@ -40,7 +40,7 @@ def set_variable(name, value):
 def set_variables(vars):
   global trainable_variables
   trainable_variables = {
-    k: tf.constant(v)
+    k: tf.constant(v, name=k.replace('/', '_'))
     for k, v in vars.items()
   }
 
@@ -112,6 +112,15 @@ def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
         return tf.reshape(logits, [batch_size, length, vocab_size])
 
 def get_decoder_self_attention_bias(length, dtype=tf.float32):
+  neg_inf = _NEG_INF_FP16 if dtype == tf.float16 else _NEG_INF_FP32
+  r = tf.range(length)
+  y = tf.cast(tf.reshape(r, [-1, 1]) < tf.reshape(r, [1, -1]), tf.float32) * neg_inf
+  #return y[None, None, :, :]
+  y = tf.expand_dims(y, axis=0)
+  y = tf.expand_dims(y, axis=1)
+  return y
+
+def get_decoder_self_attention_bias_v2(length, dtype=tf.float32):
   """Calculate bias for decoder that maintains model's autoregressive property.
 
   Creates a tensor that masks out locations that correspond to illegal
@@ -283,13 +292,37 @@ class Transformer(tf.keras.layers.Layer):
     logits = decode(targets, encoder_outputs)
     return logits
 
-def load_model(file):
+def load_model_as_function(file):
+  assert tf.__version__.split('.')[0] == '2'
+  assert tf.__version__.split('.')[1] == '3'
   arr = np.load(file)
   set_variables(arr)
   @tf.function(input_signature=(
-    tf.TensorSpec(shape=[1, 20], dtype=tf.int64),
-    tf.TensorSpec(shape=[1, 20], dtype=tf.int64),)
+    tf.TensorSpec(shape=[None, None], dtype=tf.int64),
+    tf.TensorSpec(shape=[None, None], dtype=tf.int64),)
   )
   def f(inputs, targets):
     return body(inputs, targets)
   return f
+
+def load_model(file, as_module=False, as_graph=False, as_function=True):
+  if as_graph:
+    graph = tf.Graph()
+    with graph.as_default():
+      arr = np.load(file)
+      set_variables(arr)
+      inputs = tf.placeholder(shape=[None, None], dtype=tf.int64, name='inputs')
+      targets = tf.placeholder(shape=[None, None], dtype=tf.int64, name='targets')
+      logits = body(inputs, targets)
+      #with variable_scope("encode"):
+      #  logits = embedding_softmax_layer(inputs)
+      logits = tf.identity(logits, name='logits')
+      return graph, [inputs, targets], logits
+
+  if as_module:
+    arr = np.load(file)
+    set_variables(arr)
+    model = Transformer()
+    return model
+
+  raise ValueError()
