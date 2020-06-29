@@ -111,6 +111,14 @@ def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
 
         return tf.reshape(logits, [batch_size, length, vocab_size])
 
+def get_padding_bias(x, padding_value=0, dtype=tf.float32):
+  neg_inf = _NEG_INF_FP16 if dtype == tf.float16 else _NEG_INF_FP32
+  padding = tf.cast(tf.equal(x, padding_value), dtype)
+  attention_bias = padding * neg_inf
+  attention_bias = tf.expand_dims(
+      tf.expand_dims(attention_bias, axis=1), axis=1)
+  return attention_bias
+
 def get_decoder_self_attention_bias(length, dtype=tf.float32):
   neg_inf = _NEG_INF_FP16 if dtype == tf.float16 else _NEG_INF_FP32
   r = tf.range(length)
@@ -210,7 +218,7 @@ def feed_forward_network(x):
 
 # Transformer
 
-def encoder_stack(encoder_inputs, num_layers=6):
+def encoder_stack(encoder_inputs, attention_bias, num_layers=6):
   with variable_scope('encoder_stack'):
     for n in range(num_layers):
       with variable_scope("layer_%d" % n):
@@ -218,7 +226,7 @@ def encoder_stack(encoder_inputs, num_layers=6):
           encoder_inputs = pre_post_processing_wrapper(
             self_attention_layer,
             encoder_inputs,
-            None)
+            attention_bias)
         with variable_scope("ffn"):
           encoder_inputs = pre_post_processing_wrapper(
             feed_forward_network,
@@ -229,6 +237,7 @@ def encoder_stack(encoder_inputs, num_layers=6):
 def decoder_stack(decoder_inputs,
           encoder_outputs,
           decoder_self_attention_bias,
+          attention_bias,
           num_layers=6):
   with variable_scope('decoder_stack'):
     for n in range(num_layers):
@@ -243,7 +252,7 @@ def decoder_stack(decoder_inputs,
             attention_layer,
             decoder_inputs,
             encoder_outputs,
-            None)
+            attention_bias)
         with variable_scope("ffn"):
           decoder_inputs = pre_post_processing_wrapper(
             feed_forward_network,
@@ -251,7 +260,7 @@ def decoder_stack(decoder_inputs,
 
     return layer_norm(decoder_inputs, epsilon=1e-6)
 
-def encode(inputs, hidden_size=512):
+def encode(inputs, attention_bias, hidden_size=512):
   with variable_scope('encode'):
     embedded_inputs = embedding_softmax_layer(inputs)
     length = tf.shape(embedded_inputs)[1]
@@ -259,9 +268,9 @@ def encode(inputs, hidden_size=512):
     
     encoder_inputs = embedded_inputs + pos_encoding
 
-    return encoder_stack(encoder_inputs)
+    return encoder_stack(encoder_inputs, attention_bias)
 
-def decode(targets, encoder_outputs, hidden_size=512):
+def decode(targets, encoder_outputs, attention_bias, hidden_size=512):
   with variable_scope("encode"):
     enbedded_inputs = embedding_softmax_layer(targets[:, :-1])
 
@@ -274,7 +283,8 @@ def decode(targets, encoder_outputs, hidden_size=512):
     outputs = decoder_stack(
       decoder_inputs,
       encoder_outputs,
-      decoder_self_attention_bias)
+      decoder_self_attention_bias,
+      attention_bias)
 
   with variable_scope("encode"):
     logits = embedding_softmax_layer(outputs, mode="linear")
@@ -282,15 +292,14 @@ def decode(targets, encoder_outputs, hidden_size=512):
   return logits
 
 def body(inputs, targets):
-  encoder_outputs = encode(inputs)
-  logits = decode(targets, encoder_outputs)
+  attention_bias = get_padding_bias(inputs)
+  encoder_outputs = encode(inputs, attention_bias)
+  logits = decode(targets, encoder_outputs, attention_bias)
   return logits
 
 class Transformer(tf.keras.layers.Layer):
   def call(self, inputs, targets, training):
-    encoder_outputs = encode(inputs)
-    logits = decode(targets, encoder_outputs)
-    return logits
+    return body(inputs, targets)
 
 def load_model_as_function(file):
   arr = np.load(file)
@@ -303,24 +312,20 @@ def load_model_as_function(file):
     return body(inputs, targets)
   return f
 
-def load_model(file, as_module=False, as_graph=False, as_function=True):
-  if as_graph:
-    graph = tf.Graph()
-    with graph.as_default():
-      arr = np.load(file)
-      set_variables(arr)
-      inputs = tf.placeholder(shape=[None, None], dtype=tf.int64, name='inputs')
-      targets = tf.placeholder(shape=[None, None], dtype=tf.int64, name='targets')
-      logits = body(inputs, targets)
-      #with variable_scope("encode"):
-      #  logits = embedding_softmax_layer(inputs)
-      logits = tf.identity(logits, name='logits')
-      return graph, [inputs, targets], logits
+def load_model_as_model(file):
+  arr = np.load(file)
+  set_variables(arr)
+  return Transformer()
 
-  if as_module:
+def load_model_as_graph(file):
+  graph = tf.Graph()
+  with graph.as_default():
     arr = np.load(file)
     set_variables(arr)
-    model = Transformer()
-    return model
-
-  raise ValueError()
+    inputs = tf.placeholder(shape=[None, None], dtype=tf.int64, name='inputs')
+    targets = tf.placeholder(shape=[None, None], dtype=tf.int64, name='targets')
+    logits = body(inputs, targets)
+    #with variable_scope("encode"):
+    #  logits = embedding_softmax_layer(inputs)
+    logits = tf.identity(logits, name='logits')
+    return graph, [inputs, targets], logits

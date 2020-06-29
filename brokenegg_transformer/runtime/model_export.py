@@ -28,18 +28,19 @@ def test_tflite(model_file='brokenegg.tflite', vocab_file='examples/model_base_2
   input_text = 'I went to school, today.'
   print('IN: %s' % input_text)
   inputs_data = np.array([sp.encode_as_ids(input_text) + [2]], dtype=np.int64)
-  targets_data = np.array([[1, 2]], np.int64)
+  targets_data = np.array([[1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], np.int64)
+
+  interpreter.resize_tensor_input(0, inputs_data.shape)
+  interpreter.resize_tensor_input(1, targets_data.shape)
+  interpreter.allocate_tensors()
 
   while True:
-    interpreter.resize_tensor_input(0, inputs_data.shape)
-    interpreter.resize_tensor_input(1, targets_data.shape)
-    interpreter.allocate_tensors()
     interpreter.set_tensor(input_details[0]['index'], inputs_data)
     interpreter.set_tensor(input_details[1]['index'], targets_data)
     interpreter.invoke()
     output_data = interpreter.get_tensor(output_details[0]['index'])
     output_tokens = output_data[:, -1, :].argmax(axis=-1)
-    targets_data = np.concatenate([
+    targets_data2 = np.concatenate([
         targets_data[:, :-1],
         [output_tokens],
         [[1]]],
