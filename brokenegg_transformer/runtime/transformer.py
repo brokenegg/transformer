@@ -104,7 +104,7 @@ def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
         return embedded_inputs
       elif mode == "linear":
         vocab_size = tf.shape(shared_weights)[0]
-        batch_size = tf.shape(inputs)[0]
+        batch_size = -1 # tf.shape(inputs)[0]
         length = tf.shape(inputs)[1]
         x = tf.reshape(inputs, [-1, hidden_size])
         logits = tf.matmul(x, shared_weights, transpose_b=True)
@@ -301,12 +301,12 @@ class Transformer(tf.keras.layers.Layer):
   def call(self, inputs, targets, training):
     return body(inputs, targets)
 
-def load_model_as_function(file):
+def load_model_as_function(file, max_len=10):
   arr = np.load(file)
   set_variables(arr)
   @tf.function(input_signature=(
-    tf.TensorSpec(shape=[None, None], dtype=tf.int64),
-    tf.TensorSpec(shape=[None, None], dtype=tf.int64),)
+    tf.TensorSpec(shape=[None, max_len], dtype=tf.int64),
+    tf.TensorSpec(shape=[None, max_len], dtype=tf.int64),)
   )
   def f(inputs, targets):
     return body(inputs, targets)
