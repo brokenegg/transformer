@@ -32,7 +32,7 @@ def export_tflite(weight_file='examples/brokenegg.npz', model_file='brokenegg.tf
   with tf.io.gfile.GFile(model_file, 'wb') as f:
     f.write(res)
 
-def export_tflite_tf23(weight_file='examples/brokenegg.npz', model_file='brokenegg_tf23.tflite'):
+def export_tflite_tf23(weight_file='examples/brokenegg.npz', model_file='brokenegg_tf23_fp16.tflite'):
   assert tf.__version__.split('.')[0] == '2'
   assert tf.__version__.split('.')[1] == '3'
   func = load_model_as_function(weight_file)
@@ -40,6 +40,8 @@ def export_tflite_tf23(weight_file='examples/brokenegg.npz', model_file='brokene
   targets_data = tf.TensorSpec(shape=[None, None], dtype=tf.int64)
   cfunc = func.get_concrete_function(inputs_data, targets_data)
   converter = tf.lite.TFLiteConverter.from_concrete_functions([cfunc])
+  converter.optimizations = [tf.lite.Optimize.DEFAULT]
+  converter.target_spec.supported_types = [tf.float16]
   res = converter.convert()
   with tf.io.gfile.GFile(model_file, 'wb') as f:
     f.write(res)
@@ -78,7 +80,7 @@ def test_tflite(model_file='brokenegg.tflite',
     target_text = sp.decode_ids(targets_data[0, 1:i+2].tolist())
     print('OUT: %s' % target_text)
 
-def test_tflite_tf23(model_file='brokenegg_tf23.tflite',
+def test_tflite_tf23(model_file='brokenegg_tf23_fp16.tflite',
     vocab_file='examples/model_base_20200623/brokenegg.en-es-ja.spm64k.model',
     max_len=10):
   import sentencepiece as spm
