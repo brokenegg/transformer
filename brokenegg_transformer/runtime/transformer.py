@@ -309,7 +309,8 @@ def load_model_as_function(file, max_len=10):
     tf.TensorSpec(shape=[None, max_len], dtype=tf.int64),)
   )
   def f(inputs, targets):
-    return body(inputs, targets)
+    logits = body(inputs, targets)
+    return tf.argmax(logits, axis=-1)
   return f
 
 def load_model_as_model(file):

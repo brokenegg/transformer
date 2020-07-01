@@ -2,12 +2,23 @@
 
 from brokenegg_transformer.runtime.transformer import load_model_as_function
 
+from absl import app
+from absl import flags
+from absl import logging
 import tensorflow as tf
 import numpy as np
 import os
 
 PAD_ID = 0
 EOS_ID = 2
+
+flags.DEFINE_string(
+    name="model_dir", short_name="md", default="/tmp",
+    help="The location of the model data.")
+flags.DEFINE_string(
+    name="format", short_name="e", default="tflite",
+    help="Model format.")
+
 
 def export_tflite(weight_file='examples/brokenegg.npz', model_file='brokenegg.tflite', max_len=10):
   assert tf.__version__.split('.')[0] == '2'
@@ -67,7 +78,9 @@ def test_tflite(model_file='brokenegg.tflite',
     target_text = sp.decode_ids(targets_data[0, 1:i+2].tolist())
     print('OUT: %s' % target_text)
 
-def test_tflite_tf23(model_file='brokenegg.tflite', vocab_file='examples/model_base_20200623/brokenegg.en-es-ja.spm64k.model'):
+def test_tflite_tf23(model_file='brokenegg_tf23.tflite',
+    vocab_file='examples/model_base_20200623/brokenegg.en-es-ja.spm64k.model',
+    max_len=10):
   import sentencepiece as spm
   sp = spm.SentencePieceProcessor()
   sp.load(vocab_file)
@@ -77,29 +90,27 @@ def test_tflite_tf23(model_file='brokenegg.tflite', vocab_file='examples/model_b
 
   input_text = 'I went to school, today.'
   print('IN: %s' % input_text)
-  inputs_data = np.array([sp.encode_as_ids(input_text) + [2]], dtype=np.int64)
-  targets_data = np.array([[1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], np.int64)
+  inputs_data = np.array([sp.encode_as_ids(input_text) + [EOS_ID]], dtype=np.int64)
+  targets_tokens = [64002]
 
-  interpreter.resize_tensor_input(0, inputs_data.shape)
-  interpreter.resize_tensor_input(1, targets_data.shape)
-  interpreter.allocate_tensors()
+  for i in range(max_len):
+    if i == 0:
+      targets_len = 10
+      interpreter.resize_tensor_input(0, inputs_data.shape)
+      interpreter.resize_tensor_input(1, [1, targets_len])
+      interpreter.allocate_tensors()
 
-  while True:
+    targets_data = np.array([(targets_tokens + [PAD_ID] * targets_len)[:targets_len]], dtype=np.int64)
     interpreter.set_tensor(input_details[0]['index'], inputs_data)
     interpreter.set_tensor(input_details[1]['index'], targets_data)
     interpreter.invoke()
     output_data = interpreter.get_tensor(output_details[0]['index'])
-    output_tokens = output_data[:, -1, :].argmax(axis=-1)
-    targets_data2 = np.concatenate([
-        targets_data[:, :-1],
-        [output_tokens],
-        [[1]]],
-      axis=1)
-    print(targets_data.shape[1])
-    target_text = sp.decode_ids(targets_data[0, 1:].tolist())
-    print('OUT: %s' % target_text)
-    if targets_data.shape[1] > 20 or output_tokens[0] == 1:
+    predict = int(output_data[0, i])
+    if predict == 2:
       break
+    targets_tokens.append(predict)
+    target_text = sp.decode_ids(targets_tokens[1:])
+    print('OUT: %s' % target_text)
 
 def export_onnx(weight_file='examples/brokenegg.npz', model_path=None):
 
@@ -203,10 +214,14 @@ def export_saved_model(weight_file='examples/brokenegg.npz', export_dir=None, tf
       f.write(tflite_model)
     print('*******************D')
 
+def main(_):
+  flags_obj = flags.FLAGS
+  if flags_obj.format == 'tflite':
+    export_tflite_tf23()
+  elif flags_obj.format == 'tflite_test':
+    test_tflite_tf23()
+  else:
+    raise ValueError()
+
 if __name__ == '__main__':
-  #export_tflite()
-  test_tflite()
-  #model_test()
-  #export_onnx()
-  #export_tvm(model_path='export/1')
-  #export_saved_model(export_dir='export')
+  app.run(main)
