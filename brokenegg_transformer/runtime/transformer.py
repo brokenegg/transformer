@@ -94,7 +94,7 @@ def dense_layer(name, inputs, subscripts='abc,cde->abde', use_bias=True, activat
 
 # Transformer layers
 
-def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
+def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding", dtype=tf.float32):
   with variable_scope('embedding_shared_weights'):
     with variable_scope('embedding_and_softmax'):
       shared_weights = get_variable('weights')
@@ -108,7 +108,6 @@ def embedding_softmax_layer(inputs, hidden_size=512, mode="embedding"):
         length = tf.shape(inputs)[1]
         x = tf.reshape(inputs, [-1, hidden_size])
         logits = tf.matmul(x, shared_weights, transpose_b=True)
-
         return tf.reshape(logits, [batch_size, length, vocab_size])
 
 def get_padding_bias(x, padding_value=0, dtype=tf.float32):
@@ -122,7 +121,7 @@ def get_padding_bias(x, padding_value=0, dtype=tf.float32):
 def get_decoder_self_attention_bias(length, dtype=tf.float32):
   neg_inf = _NEG_INF_FP16 if dtype == tf.float16 else _NEG_INF_FP32
   r = tf.range(length)
-  y = tf.cast(tf.reshape(r, [-1, 1]) < tf.reshape(r, [1, -1]), tf.float32) * neg_inf
+  y = tf.cast(tf.reshape(r, [-1, 1]) < tf.reshape(r, [1, -1]), dtype) * neg_inf
   #return y[None, None, :, :]
   y = tf.expand_dims(y, axis=0)
   y = tf.expand_dims(y, axis=1)
@@ -260,26 +259,28 @@ def decoder_stack(decoder_inputs,
 
     return layer_norm(decoder_inputs, epsilon=1e-6)
 
-def encode(inputs, attention_bias, hidden_size=512):
+def encode(inputs, attention_bias, hidden_size=512, dtype=tf.float32):
   with variable_scope('encode'):
     embedded_inputs = embedding_softmax_layer(inputs)
     length = tf.shape(embedded_inputs)[1]
     pos_encoding = get_position_encoding(length, hidden_size)
-    
+    pos_encoding = tf.cast(pos_encoding, dtype)
+
     encoder_inputs = embedded_inputs + pos_encoding
 
     return encoder_stack(encoder_inputs, attention_bias)
 
-def decode(targets, encoder_outputs, attention_bias, hidden_size=512):
+def decode(targets, encoder_outputs, attention_bias, hidden_size=512, dtype=tf.float32):
   with variable_scope("encode"):
     enbedded_inputs = embedding_softmax_layer(targets[:, :-1])
 
   with variable_scope("decode"):
     length = tf.shape(enbedded_inputs)[1]
     pos_encoding = get_position_encoding(length, hidden_size)
+    pos_encoding = tf.cast(pos_encoding, dtype)
     decoder_inputs = enbedded_inputs + pos_encoding
 
-    decoder_self_attention_bias = get_decoder_self_attention_bias(length)
+    decoder_self_attention_bias = get_decoder_self_attention_bias(length, dtype=dtype)
     outputs = decoder_stack(
       decoder_inputs,
       encoder_outputs,
@@ -291,10 +292,10 @@ def decode(targets, encoder_outputs, attention_bias, hidden_size=512):
 
   return logits
 
-def body(inputs, targets):
-  attention_bias = get_padding_bias(inputs)
-  encoder_outputs = encode(inputs, attention_bias)
-  logits = decode(targets, encoder_outputs, attention_bias)
+def body(inputs, targets, dtype=tf.float32):
+  attention_bias = get_padding_bias(inputs, dtype=dtype)
+  encoder_outputs = encode(inputs, attention_bias, dtype=dtype)
+  logits = decode(targets, encoder_outputs, attention_bias, dtype=dtype)
   return logits
 
 class Transformer(tf.keras.layers.Layer):
@@ -309,7 +310,7 @@ def load_model_as_function(file, max_len=10):
     tf.TensorSpec(shape=[None, max_len], dtype=tf.int64),)
   )
   def f(inputs, targets):
-    logits = body(inputs, targets)
+    logits = body(inputs, targets, dtype=tf.float32)
     return tf.argmax(logits, axis=-1)
   return f
 
