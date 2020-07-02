@@ -20,7 +20,7 @@ flags.DEFINE_string(
     help="Model format.")
 
 
-def export_tflite(weight_file='examples/brokenegg.npz', model_file='brokenegg.tflite', max_len=10):
+def export_tflite_tf22(weight_file='examples/brokenegg.npz', model_file='brokenegg_tf22.tflite', max_len=10):
   assert tf.__version__.split('.')[0] == '2'
   assert tf.__version__.split('.')[1] == '2'
   func = load_model_as_function(weight_file, max_len=max_len)
@@ -28,6 +28,8 @@ def export_tflite(weight_file='examples/brokenegg.npz', model_file='brokenegg.tf
   targets_data = tf.TensorSpec(shape=[None, max_len], dtype=tf.int64)
   cfunc = func.get_concrete_function(inputs_data, targets_data)
   converter = tf.lite.TFLiteConverter.from_concrete_functions([cfunc])
+  #converter.optimizations = [tf.lite.Optimize.DEFAULT]
+  #converter.target_spec.supported_types = [tf.float16]
   res = converter.convert()
   with tf.io.gfile.GFile(model_file, 'wb') as f:
     f.write(res)
@@ -46,7 +48,7 @@ def export_tflite_tf23(weight_file='examples/brokenegg.npz', model_file='brokene
   with tf.io.gfile.GFile(model_file, 'wb') as f:
     f.write(res)
 
-def test_tflite(model_file='brokenegg.tflite',
+def test_tflite_tf22(model_file='brokenegg.tflite',
     vocab_file='examples/model_base_20200623/brokenegg.en-es-ja.spm64k.model',
     max_len=10):
   import sentencepiece as spm
@@ -222,6 +224,10 @@ def main(_):
     export_tflite_tf23()
   elif flags_obj.format == 'tflite_test':
     test_tflite_tf23()
+  elif flags_obj.format == 'tflite_tf22':
+    export_tflite_tf22()
+  elif flags_obj.format == 'tflite_tf22_test':
+    test_tflite_tf22()
   else:
     raise ValueError()
 
