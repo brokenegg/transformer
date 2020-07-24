@@ -16,9 +16,41 @@ flags.DEFINE_string(
     name="model_dir", short_name="md", default="/tmp",
     help="The location of the model data.")
 flags.DEFINE_string(
+    name="weight_file", short_name="wf", default="brokenegg-20200711.npz",
+    help="NumPy weight file.")
+flags.DEFINE_string(
     name="format", short_name="e", default="tflite",
     help="Model format.")
 
+
+def export_numpy(checkpoint_path, weight_file):
+  import re
+  from brokenegg_transformer import model_params
+  from brokenegg_transformer import transformer
+
+  def clean_variable_name(name):
+      name = name.replace('transformer_v2_1/Transformer/', '')
+      name = name.replace('transformer_v2/Transformer/', '')
+      name = name.replace(':0', '')
+      name = re.sub(r'(embedding_shared_weights|pre_post_processing_wrapper|encoder_stack|decoder_stack|self_attention|layer_normalization|feed_forward_network|attention)_[0-9]+', r'\1', name)
+      return name
+
+  params = model_params.BASE_PARAMS.copy()
+  params["dtype"] = tf.float32
+  model = transformer.create_model(params, is_train=True, has_initial_ids=False)
+
+  ckpt_path = tf.train.latest_checkpoint(checkpoint_path)
+  print('Restoring from %s' % ckpt_path)
+  #model.load_weights(ckpt_path)
+  checkpoint = tf.train.Checkpoint(model=model)
+  checkpoint.restore(ckpt_path).assert_existing_objects_matched().expect_partial()
+  
+  arr = {
+    clean_variable_name(v.name): v.numpy()
+    for v in model.trainable_variables
+  }
+
+  np.savez(weight_file, **arr)
 
 def export_tflite_tf22(weight_file='examples/brokenegg.npz', model_file='brokenegg_tf22.tflite', max_len=10):
   assert tf.__version__.split('.')[0] == '2'
@@ -116,20 +148,21 @@ def test_tflite_tf23(model_file='brokenegg_tf23_fp16.tflite',
     target_text = sp.decode_ids(targets_tokens[1:])
     print('OUT: %s' % target_text)
 
-def export_onnx(weight_file='examples/brokenegg.npz', model_path=None):
-
+def export_saved_model(weight_file='examples/brokenegg.npz', output_dir='saved_model'):
   from brokenegg_transformer.runtime import transformer
+  model = transformer.load_model_as_model(weight_file)
+  model.save(output_dir)
 
-  graph, [inputs, targets], _ = transformer.load_model(weight_file, as_graph=True)
+def export_onnx(weight_file, output_file='brokenegg-20200711.onnx'):
 
   import tensorflow as tf
   import tf2onnx
 
   with tf.Session(graph=graph) as sess:
-    onnx_graph = tf2onnx.tfonnx.process_tf_graph(sess.graph,
+    onnx_graph = tf2onnx.tensorflow_to_onnx(sess.graph,
       input_names=["inputs:0", "targets:0"], output_names=["logits:0"])
     model_proto = onnx_graph.make_model("test")
-    with open("model.onnx", "wb") as f:
+    with open(output_file, "wb") as f:
         f.write(model_proto.SerializeToString())
 
 def model_test():
@@ -197,30 +230,11 @@ def export_tvm(weight_file='examples/brokenegg.npz', model_path=None):
                                     target_host=target_host,
                                     params=params)
 
-def export_saved_model(weight_file='examples/brokenegg.npz', export_dir=None, tflite_file=None):
-  from brokenegg_transformer.runtime import transformer
-
-  if export_dir:
-    inputs = tf.keras.layers.Input((None,), dtype="int64", name="inputs")
-    targets = tf.keras.layers.Input((None,), dtype="int64", name="targets")
-    internal_model = transformer.load_model(weight_file, as_module=True)
-    logits = internal_model(inputs, targets, training=False)
-    model = tf.keras.Model([inputs, targets], logits)
-
-    print('*******************A')
-    tf.saved_model.save(model, export_dir)
-
-  if tflite_file:
-    model = transformer.load_model(weight_file)
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([model.get_concrete_function()])
-    tflite_model = converter.convert()
-    with tf.io.gfile.GFile(tflite_file, 'wb') as f:
-      f.write(tflite_model)
-    print('*******************D')
-
 def main(_):
   flags_obj = flags.FLAGS
-  if flags_obj.format == 'tflite':
+  if flags_obj.format == 'numpy':
+    export_numpy(flags_obj.model_dir, flags_obj.weight_file)
+  elif flags_obj.format == 'tflite':
     export_tflite_tf23()
   elif flags_obj.format == 'tflite_test':
     test_tflite_tf23()
@@ -228,6 +242,10 @@ def main(_):
     export_tflite_tf22()
   elif flags_obj.format == 'tflite_tf22_test':
     test_tflite_tf22()
+  elif flags_obj.format == 'saved_model':
+    export_saved_model(weight_file=flags_obj.weight_file)
+  elif flags_obj.format == 'onnx':
+    export_onnx(weight_file=flags_obj.weight_file)
   else:
     raise ValueError()
 

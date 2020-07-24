@@ -317,7 +317,11 @@ def load_model_as_function(file, max_len=10):
 def load_model_as_model(file):
   arr = np.load(file)
   set_variables(arr)
-  return Transformer()
+  inputs = tf.keras.Input(shape=(None,), dtype=tf.int64)
+  targets = tf.keras.Input(shape=(None,), dtype=tf.int64)
+  outputs = Transformer()(inputs, targets)
+  model = tf.keras.Model([inputs, targets], outputs)
+  return model
 
 def load_model_as_graph(file):
   graph = tf.Graph()

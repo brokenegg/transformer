@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom
+/saved_model
+model_base_[0-9]*/
+*.onnx
+*.tflite
+*.npz
+.vscode/
