@@ -147,15 +147,15 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
         for line in f:
           parts = line.rstrip('\r\n').split('\t')
           if random.random() < lang_rates[lang1]:
-            fout.write(parts[1])
+            fout.write(parts[1] + '\n')
             count += 1
-            if count % 10000 == 0:
-              logging.info('%d lines written (%.1f%%)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
+            if count % 500000 == 0:
+              logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
           if random.random() < lang_rates[lang2]:
-            fout.write(parts[2])
+            fout.write(parts[2] + '\n')
             count += 1
-            if count % 10000 == 0:
-              logging.info('%d lines written (%.1f%%)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
+            if count % 500000 == 0:
+              logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
 
   os.rename(spm_train_file + '.incomplete', spm_train_file)
 
