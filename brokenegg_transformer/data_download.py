@@ -134,7 +134,7 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
     lang_count[lang2] += _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
 
   lang_rates = {
-    lang: _SPM_TRAIN_SAMPLES / (len(lang_count) * lang_count[lang])
+    lang: (_SPM_TRAIN_SAMPLES * 1.01) / (len(lang_count) * lang_count[lang])
     for lang in lang_count
   }
 
@@ -150,19 +150,19 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
             fout.write(parts[1])
             count += 1
             if count % 10000 == 0:
-              logging.info('%d lines written (%.1g)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
+              logging.info('%d lines written (%.1f%%)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
           if random.random() < lang_rates[lang2]:
             fout.write(parts[2])
             count += 1
             if count % 10000 == 0:
-              logging.info('%d lines written (%.1g)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
+              logging.info('%d lines written (%.1f%%)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
 
   os.rename(spm_train_file + '.incomplete', spm_train_file)
 
   return spm_train_file
 
 
-def train_spm(data_dir, vocab_file, spm_train_file):
+def train_spm(spm_train_file, data_dir, vocab_file):
   import sentencepiece as spm
   model_prefix = os.path.join(data_dir, vocab_file)[:-len('.model')]
   spm.SentencePieceTrainer.train(
