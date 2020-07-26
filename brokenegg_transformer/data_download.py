@@ -59,7 +59,10 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # evaluation datasets are tagged as "dev" for development.
 
 # Vocabulary constants
+_SPM_TRAIN_FILE = _PREFIX + "spm_train.en-es-ja.txt"
+_SPM_TRAIN_SAMPLES = 10000000
 _VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
+_VOCAB_SIZE = 64000
 
 # Number of files to split train and evaluation data
 _TRAIN_SAMPLES_PER_SHARD = 45000
@@ -111,8 +114,50 @@ def download_from_url(path, url):
     return filename
 
 
+###############################################################################
+# Vocabulary
+###############################################################################
 def get_vocab_file(raw_dir, data_dir, vocab_file):
   return tokenizer.Subtokenizer(os.path.join(data_dir, vocab_file))
+
+
+def make_spm_train_file(data_dir, lang_pairs, train_files):
+  from collections import Counter
+  train_file = os.path.join(data_dir, _SPM_TRAIN_FILE)
+  if os.path.exists(train_file):
+    logging.info("Already available: %s" % (train_file,))
+    return train_file
+  lang_count = Counter()
+  for lang_pair in lang_pairs:
+    lang1, lang2 = lang_pair.split('-')
+    lang_count[lang1] += _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
+    lang_count[lang2] += _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
+
+  lang_rates = {
+    lang: _SPM_TRAIN_SAMPLES / (len(lang_count) * lang_count[lang])
+    for lang in lang_count
+  }
+
+  with open(train_file, 'w') as fout:
+    for lang_pair in lang_pairs:
+      lang1, lang2 = lang_pair.split('-')
+      train_file = train_files[lang_pair]
+      with gzip.open(train_file, 'rt') as f:
+        for line in f:
+          parts = line.rstrip('\r\n').split('\t')
+          if random.random() < lang_rate[lang1]:
+            fout.write(part[1])
+          if random.random() < lang_rate[lang2]:
+            fout.write(part[2])
+
+  return train_file
+
+
+def train_spm(data_dir, vocab_file, spm_train_file):
+  import sentencepiece as spm
+  model_prefix = os.path.join(data_dir, vocab_file)[:-len('.model')]
+  spm.SentencePieceTrainer.train(
+    f'--input={spm_train_file} --model_prefix={model_prefix} --vocab_size={_VOCAB_SIZE}')
 
 
 ###############################################################################
@@ -277,6 +322,11 @@ def main(unused_argv):
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
+  if os.path.exists(os.path.join(FLAGS.data_dir, _VOCAB_FILE)):
+    logging.info("Already available: %s", (_VOCAB_FILE,))
+  else:
+    spm_train_file = make_spm_train_file(FLAGS.data_dir, lang_pairs, train_files)
+    train_spm(spm_train_file, FLAGS.data_dir, _VOCAB_FILE):
   subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, _VOCAB_FILE)
 
   # Tokenize and save data as Examples in the TFRecord format.
