@@ -138,7 +138,7 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
     for lang in lang_count
   }
 
-  with open(train_file, 'w') as fout:
+  with open(train_file + '.incomplete', 'w') as fout:
     for lang_pair in lang_pairs:
       lang1, lang2 = lang_pair.split('-')
       train_file = train_files[lang_pair]
@@ -149,6 +149,8 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
             fout.write(part[1])
           if random.random() < lang_rates[lang2]:
             fout.write(part[2])
+
+  os.rename(train_file + '.incomplete', train_file)
 
   return train_file
 
