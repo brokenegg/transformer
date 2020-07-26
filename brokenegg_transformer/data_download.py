@@ -43,17 +43,17 @@ from brokenegg_transformer.utils import tokenizer
 # min_count is the minimum number of times a token must appear in the data
 # before it is added to the vocabulary. "Best min count" refers to the value
 # that generates a vocabulary set that is closest in size to _TARGET_VOCAB_SIZE.
-_WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/WikiMatrix.%s-%s.tsv.gz"
+_WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/WikiMatrix.%s.tsv.gz"
 
-# (<langpair>, <rate>), None for rate is equal to 1.0.
-_WIKIMATRIX_LANG_PAIRS = [
-  ('en-es', 0.5), # 6,452,177 pairs
-  ('en-ja', None), # 3,895,992 pairs
-  ('es-ja', None), # 1,802,993 pairs
-]
+# <langpair> => <#samples>
+_WIKIMATRIX_LANG_PAIR_SAMPLES = {
+  'en-es': 6452177,
+  'en-ja': 3895992,
+  'es-ja': 1802993,
+}
 
 # Strings to inclue in the generated files.
-_PREFIX = "brokenegg"
+_PREFIX = "wikimatrix"
 _TRAIN_TAG = "train"
 _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # evaluation datasets are tagged as "dev" for development.
@@ -62,22 +62,16 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 _VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
 
 # Number of files to split train and evaluation data
-_TRAIN_SHARDS = 40
-_EVAL_SHARDS = 1
-_TRAIN_EVAL_RATIO = 10
+_TRAIN_SAMPLES_PER_SHARD = 45000
+_EVAL_SAMPLES_PER_SHARD = 10000
 
 
 ###############################################################################
 # Download and extraction functions
 ###############################################################################
-def get_source_urls(raw_dir, url_template, lang_pairs):
-  res = []
-  for lang_pair, rate in lang_pairs:
-    lang1, lang2 = lang_pair.split('-')
-    url = _WIKIMATRIX_URL_TEMPLATE % (lang1, lang2)
-    filename = download_from_url(raw_dir, url)
-    res.append((lang1, lang2, rate, filename))
-  return res
+def get_source_urls(raw_dir, url_template, lang_pair):
+  url = url_template % (lang_pair,)
+  return download_from_url(raw_dir, url)
 
 def download_report_hook(count, block_size, total_size):
   """Report hook for download progress.
@@ -140,7 +134,8 @@ def get_lang_map(subtokenizer, lang_pairs):
 
 
 def encode_and_save_files(
-    subtokenizer, data_dir, raw_files, total_train_shards, total_eval_shards, lang_map, extra_files=[], train_eval_ratio=100):
+    subtokenizer, data_dir, lang_pair, raw_files, total_train_shards, total_eval_shards, eval_ratio,
+    input_column=1, target_column=2):
   """Save data from files as encoded Examples in TFrecord format.
 
   Args:
@@ -155,9 +150,9 @@ def encode_and_save_files(
     List of all files produced.
   """
   # Create a file for each shard.
-  train_filepaths = [shard_filename(data_dir, _TRAIN_TAG, n + 1, total_train_shards)
+  train_filepaths = [shard_filename(data_dir, lang_pair, _TRAIN_TAG, n + 1, total_train_shards)
                for n in range(total_train_shards)]
-  eval_filepaths = [shard_filename(data_dir, _EVAL_TAG, n + 1, total_eval_shards)
+  eval_filepaths = [shard_filename(data_dir, lang_pair, _EVAL_TAG, n + 1, total_eval_shards)
                for n in range(total_eval_shards)]
   filepaths = train_filepaths + eval_filepaths
 
@@ -173,13 +168,9 @@ def encode_and_save_files(
   tmp_filepaths = tmp_train_filepaths + tmp_eval_filepaths
   train_writers = [tf.python_io.TFRecordWriter(fname) for fname in tmp_train_filepaths]
   eval_writers = [tf.python_io.TFRecordWriter(fname) for fname in tmp_eval_filepaths]
-  writers = train_writers * train_eval_ratio + eval_writers
-  total_shards = len(writers)
-  counter, shard = 0, 0
-  for lang1, lang2, rate, raw_file in raw_files:
+  train_counter, eval_counter = 0, 0
+  for raw_file in raw_files:
     logging.info('Reading %s' % raw_file)
-    lang1_sos = lang_map.get(lang1, tokenizer.SOS_ID)
-    lang2_sos = lang_map.get(lang2, tokenizer.SOS_ID)
 
     with gzip.open(raw_file, 'rt') as f:
       for counter, line in enumerate(f):
@@ -187,41 +178,19 @@ def encode_and_save_files(
         if counter > 0 and counter % 100000 == 0:
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
 
-        encoded_input = subtokenizer.encode(parts[1], add_eos=True)
-        encoded_target = subtokenizer.encode(parts[2], add_eos=True)
-        if rate is None or random.random() < rate:
-          example = dict_to_example(
-              {"inputs": encoded_input,
-              "targets": [lang2_sos] + encoded_target})
-          writers[shard].write(example.SerializeToString())
-
-          shard = (shard + 1) % total_shards
-
-        # Rev
-        if rate is None or random.random() < rate:
-          example = dict_to_example(
-              {"inputs": encoded_target,
-              "targets": [lang1_sos] + encoded_input})
-          writers[shard].write(example.SerializeToString())
-
-          shard = (shard + 1) % total_shards
-
-  shard = 0
-  for raw_file in extra_files:
-    with gzip.open(raw_file, 'rt') as f:
-      for counter, line in enumerate(f):
-        parts = line.rstrip('\r\n').split('\t')
-        if counter > 0 and counter % 100000 == 0:
-          logging.info("\tSaving case %d of %s." % (counter, raw_file))
-
-        encoded_input = subtokenizer.encode(parts[0], add_eos=True)
-        encoded_target = subtokenizer.encode(parts[1], add_eos=True)
+        encoded_input = subtokenizer.encode(parts[input_column], add_eos=True)
+        encoded_target = subtokenizer.encode(parts[target_column], add_eos=True)
         example = dict_to_example(
             {"inputs": encoded_input,
-            "targets": [tokenizer.SOS_ID] + encoded_target})
-        train_writers[shard].write(example.SerializeToString())
-
-        shard = (shard + 1) % len(train_writers)
+            "targets": encoded_target})
+        if total_eval_shards == 0 or eval_counter >= eval_ratio * counter:
+          shard = train_counter % total_train_shards
+          train_writers[shard].write(example.SerializeToString())
+          train_counter += 1
+        else:
+          shard = eval_counter % total_eval_shards
+          eval_writers[shard].write(example.SerializeToString())
+          eval_counter += 1
 
   for writer in train_writers + eval_writers:
     writer.close()
@@ -233,10 +202,10 @@ def encode_and_save_files(
   return train_filepaths, eval_filepaths
 
 
-def shard_filename(path, tag, shard_num, total_shards):
+def shard_filename(path, lang_pair, tag, shard_num, total_shards):
   """Create filename for data shard."""
   return os.path.join(
-      path, "%s-%s-%.5d-of-%.5d" % (_PREFIX, tag, shard_num, total_shards))
+      path, "%s-%s-%s-%.5d-of-%.5d" % (_PREFIX, lang_pair, tag, shard_num, total_shards))
 
 
 def shuffle_records(fname):
@@ -292,28 +261,46 @@ def main(unused_argv):
   """Obtain training and evaluation data for the Transformer model."""
   make_dir(FLAGS.raw_dir)
   make_dir(FLAGS.data_dir)
+  lang_pairs = FLAGS.lang_pairs.split(',')
 
   # Download test_data
-  logging.info("Step 1/4: Downloading test data")
+  logging.info("Step 1/5: Downloading test data")
   logging.info("Skipping downloading. We don't have test data.")
   #get_raw_files(FLAGS.data_dir, _TEST_DATA_SOURCES)
 
   # Get paths of download/extracted training and evaluation files.
-  logging.info("Step 2/4: Downloading data from source")
-  train_files = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, _WIKIMATRIX_LANG_PAIRS)
+  logging.info("Step 2/5: Downloading data from source")
+  train_files = {}
+  for lang_pair in lang_pairs:
+    train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
+    train_files[lang_pair] = train_file
 
   # Create subtokenizer based on the training files.
-  logging.info("Step 3/4: Creating sentencepiece and building vocabulary")
+  logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
   subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, _VOCAB_FILE)
 
   # Tokenize and save data as Examples in the TFRecord format.
-  logging.info("Step 4/4: Preprocessing and saving data")
-  lang_map = get_lang_map(subtokenizer, _WIKIMATRIX_LANG_PAIRS)
-  extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
-  train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-      subtokenizer, FLAGS.data_dir, train_files,
-      _TRAIN_SHARDS, _EVAL_SHARDS, lang_map, extra_files=extra_files, train_eval_ratio=_TRAIN_EVAL_RATIO)
+  logging.info("Step 4/5: Preprocessing and saving data")
+  for lang_pair in lang_pairs:
+    train_file = train_files[lang_pair]
+    num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
+    train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+    eval_shareds = 1
+    eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
+    train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+        subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
+        train_shards, eval_shareds, eval_ratio)
+    for fname in train_tfrecord_files:
+      shuffle_records(fname)
 
+  logging.info("Step 4/5: Preprocessing and saving extra data")
+  extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
+  train_shards = FLAGS.num_extra_samples // _TRAIN_SAMPLES_PER_SHARD
+  eval_ratio = 0.0
+  train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+      subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
+      train_shards, 0, eval_ratio,
+      input_column=0, target_column=1)
   for fname in train_tfrecord_files:
     shuffle_records(fname)
 
@@ -329,9 +316,21 @@ def define_data_download_flags():
       help=flags_core.help_wrap(
           "Path where the raw data will be downloaded and extracted."))
   flags.DEFINE_string(
+      name="lang_pairs", short_name="lp", default="en-es,en-ja,es-ja",
+      help=flags_core.help_wrap(
+          "Language pairs to convert."))
+  flags.DEFINE_string(
       name="extra_dir", short_name="ed", default="/tmp/brokenegg_transformer/extra",
       help=flags_core.help_wrap(
           "Directory for where the extra dataset is found."))
+  flags.DEFINE_string(
+      name="extra_prefix", short_name="ep", default="extra",
+      help=flags_core.help_wrap(
+          "Prefix of extra data."))
+  flags.DEFINE_integer(
+      name="num_extra_samples", short_name="en", default=6000000, # 6,996,128 
+      help=flags_core.help_wrap(
+          "Estimated number of extra samples."))
 
 
 if __name__ == "__main__":

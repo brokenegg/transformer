@@ -27,7 +27,7 @@ BASE_PARAMS = defaultdict(
 
     # Model params
     initializer_gain=1.0,  # Used in trainable variable initialization.
-    vocab_size=64003,  # Number of tokens defined in the vocabulary file.
+    vocab_size=64004,  # Number of tokens defined in the vocabulary file.
     hidden_size=512,  # Model dimension in the hidden layers.
     num_hidden_layers=6,  # Number of layers in the encoder and decoder stacks.
     num_heads=8,  # Number of heads to use in multi-headed attention.
@@ -61,6 +61,7 @@ BASE_PARAMS = defaultdict(
 
     # BrokenEgg extension
     targets_with_sos=True,
+    lang_dropout=0.1,
 )
 
 BIG_PARAMS = BASE_PARAMS.copy()

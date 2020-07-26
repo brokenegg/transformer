@@ -193,7 +193,8 @@ def _batch_examples(dataset, batch_size, max_length):
 
 
 def _read_and_batch_from_files(
-    file_pattern, batch_size, max_length, num_parallel_calls, shuffle, repeat,
+    file_pattern, tgt_lang, rev,
+    batch_size, max_length, num_parallel_calls, lang_dropout, shuffle, repeat,
     static_batch=False, num_replicas=1, ctx=None):
   """Create dataset where each item is a dict of "inputs" and "targets".
 
@@ -261,6 +262,15 @@ def _read_and_batch_from_files(
     # num_replicas.
     dataset = _batch_examples(dataset, batch_size, max_length)
 
+  def add_lang(x, lang, lang_dropout):
+    return tf.concat([
+      tf.cast(tf.random.uniform([tf.shape(x)[0], 1]) >= lang_dropout, tf.int64) * lang,
+      x], axis=1)
+
+  if rev:
+    dataset = dataset.map(lambda x, y: (y, add_lang(x, tgt_lang, lang_dropout)))
+  else:
+    dataset = dataset.map(lambda x, y: (x, add_lang(y, tgt_lang, lang_dropout)))
   dataset = dataset.repeat(repeat)
 
   # Prefetch the next element to improve speed of input pipeline.
@@ -284,27 +294,52 @@ def _generate_synthetic_data(params):
 
 def train_input_fn(params, ctx=None):
   """Load and return dataset of batched examples for use during training."""
-  file_pattern = os.path.join(params["data_dir"] or "", "*train*")
   if params["use_synthetic_data"]:
     return _generate_synthetic_data(params)
-  return _read_and_batch_from_files(
-      file_pattern, params["batch_size"], params["max_length"],
-      params["num_parallel_calls"], shuffle=True,
-      repeat=params["repeat_dataset"], static_batch=params["static_batch"],
-      num_replicas=params["num_gpus"], ctx=ctx)
+  lang_map = {'en': 1, 'es': 2, 'ja': 3}
+  
+  def f(file_pattern, tgt_lang, rev):
+    return _read_and_batch_from_files(
+        file_pattern, tgt_lang, rev, params["batch_size"], params["max_length"],
+        params["num_parallel_calls"], params["lang_dropout"], shuffle=True,
+        repeat=params["repeat_dataset"], static_batch=params["static_batch"],
+        num_replicas=params["num_gpus"], ctx=ctx)
 
+  file_patterns = [
+    os.path.join(params["data_dir"] or "", "*-%s-train*" % (lang_pair))
+    for lang_pair in ['en-es', 'en-ja', 'en-es', 'es-ja', 'en-ja', 'es-ja', 'chitchat']
+  ]
+
+  dataset = tf.data.Dataset.from_tensor_slices(
+    (tf.constant(file_patterns, dtype=tf.string),
+    tf.constant([64002, 64003, 64001, 64003, 64001, 64002, 64000], dtype=tf.int64),
+    tf.cast(tf.constant([0, 0, 1, 0, 1, 1, 0], dtype=tf.int64), tf.bool)))
+  dataset = dataset.interleave(f, cycle_length=7, block_length=1)
+  return dataset
 
 def eval_input_fn(params, ctx=None):
   """Load and return dataset of batched examples for use during evaluation."""
-  file_pattern = os.path.join(params["data_dir"] or "", "*dev*")
   if params["use_synthetic_data"]:
     return _generate_synthetic_data(params)
-  return _read_and_batch_from_files(
-      file_pattern, params["batch_size"], params["max_length"],
-      params["num_parallel_calls"], shuffle=False, repeat=1,
-      static_batch=params["static_batch"], num_replicas=params["num_gpus"],
-      ctx=ctx)
 
+  def f(file_pattern, tgt_lang, rev):
+    return _read_and_batch_from_files(
+        file_pattern, tgt_lang, rev, params["batch_size"], params["max_length"],
+        params["num_parallel_calls"], 0.0, shuffle=False, repeat=1,
+        static_batch=params["static_batch"], num_replicas=params["num_gpus"],
+        ctx=ctx)
+
+  file_patterns = [
+    os.path.join(params["data_dir"] or "", "*-%s-dev*" % (lang_pair))
+    for lang_pair in ['en-es', 'en-ja', 'en-es', 'es-ja', 'en-ja', 'es-ja']
+  ]
+
+  dataset = tf.data.Dataset.from_tensor_slices(
+    (tf.constant(file_patterns, dtype=tf.string),
+    tf.constant([64002, 64003, 64001, 64003, 64001, 64002], dtype=tf.int64),
+    tf.cast(tf.constant([0, 0, 1, 0, 1, 1], dtype=tf.int64), tf.bool)))
+  dataset = dataset.interleave(f, cycle_length=7, block_length=1)
+  return dataset
 
 def map_data_for_transformer_fn(x, y):
   """Maps data for training, and handles weried behaviors for different vers."""
