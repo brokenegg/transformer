@@ -123,10 +123,10 @@ def get_vocab_file(raw_dir, data_dir, vocab_file):
 
 def make_spm_train_file(data_dir, lang_pairs, train_files):
   from collections import Counter
-  train_file = os.path.join(data_dir, _SPM_TRAIN_FILE)
-  if os.path.exists(train_file):
-    logging.info("Already available: %s" % (train_file,))
-    return train_file
+  spm_train_file = os.path.join(data_dir, _SPM_TRAIN_FILE)
+  if os.path.exists(spm_train_file):
+    logging.info("Already available: %s" % (spm_train_file,))
+    return spm_train_file
   lang_count = Counter()
   for lang_pair in lang_pairs:
     lang1, lang2 = lang_pair.split('-')
@@ -138,7 +138,8 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
     for lang in lang_count
   }
 
-  with open(train_file + '.incomplete', 'w') as fout:
+  with open(spm_train_file + '.incomplete', 'w') as fout:
+    count = 0
     for lang_pair in lang_pairs:
       lang1, lang2 = lang_pair.split('-')
       train_file = train_files[lang_pair]
@@ -147,12 +148,18 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
           parts = line.rstrip('\r\n').split('\t')
           if random.random() < lang_rates[lang1]:
             fout.write(parts[1])
+            count += 1
+            if count % 10000 == 0:
+              logging.info('%d lines written (%.1g)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
           if random.random() < lang_rates[lang2]:
             fout.write(parts[2])
+            count += 1
+            if count % 10000 == 0:
+              logging.info('%d lines written (%.1g)' % (count, count * 100 / _SPM_TRAIN_SAMPLES))
 
-  os.rename(train_file + '.incomplete', train_file)
+  os.rename(spm_train_file + '.incomplete', spm_train_file)
 
-  return train_file
+  return spm_train_file
 
 
 def train_spm(data_dir, vocab_file, spm_train_file):
