@@ -60,7 +60,7 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 
 # Vocabulary constants
 _SPM_TRAIN_FILE = _PREFIX + "spm_train.en-es-ja.txt"
-_SPM_TRAIN_SAMPLES = 10000000
+_SPM_TRAIN_SAMPLES = 3000000
 _VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
 _VOCAB_SIZE = 64000
 
