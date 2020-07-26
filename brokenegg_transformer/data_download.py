@@ -326,7 +326,7 @@ def main(unused_argv):
     logging.info("Already available: %s", (_VOCAB_FILE,))
   else:
     spm_train_file = make_spm_train_file(FLAGS.data_dir, lang_pairs, train_files)
-    train_spm(spm_train_file, FLAGS.data_dir, _VOCAB_FILE):
+    train_spm(spm_train_file, FLAGS.data_dir, _VOCAB_FILE)
   subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, _VOCAB_FILE)
 
   # Tokenize and save data as Examples in the TFRecord format.
