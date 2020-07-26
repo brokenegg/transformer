@@ -146,9 +146,9 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
         for line in f:
           parts = line.rstrip('\r\n').split('\t')
           if random.random() < lang_rates[lang1]:
-            fout.write(part[1])
+            fout.write(parts[1])
           if random.random() < lang_rates[lang2]:
-            fout.write(part[2])
+            fout.write(parts[2])
 
   os.rename(train_file + '.incomplete', train_file)
 
