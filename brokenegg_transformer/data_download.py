@@ -145,9 +145,9 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
       with gzip.open(train_file, 'rt') as f:
         for line in f:
           parts = line.rstrip('\r\n').split('\t')
-          if random.random() < lang_rate[lang1]:
+          if random.random() < lang_rates[lang1]:
             fout.write(part[1])
-          if random.random() < lang_rate[lang2]:
+          if random.random() < lang_rates[lang2]:
             fout.write(part[2])
 
   return train_file
@@ -358,11 +358,11 @@ def main(unused_argv):
 def define_data_download_flags():
   """Add flags specifying data download arguments."""
   flags.DEFINE_string(
-      name="data_dir", short_name="dd", default="/tmp/brokenegg_transformer",
+      name="data_dir", short_name="dd", default="/tmp/brokenegg_data",
       help=flags_core.help_wrap(
           "Directory for where the WikiMatrix dataset is saved."))
   flags.DEFINE_string(
-      name="raw_dir", short_name="rd", default="/tmp/brokenegg_transformer",
+      name="raw_dir", short_name="rd", default="/tmp/brokenegg_orig",
       help=flags_core.help_wrap(
           "Path where the raw data will be downloaded and extracted."))
   flags.DEFINE_string(
@@ -370,7 +370,7 @@ def define_data_download_flags():
       help=flags_core.help_wrap(
           "Language pairs to convert."))
   flags.DEFINE_string(
-      name="extra_dir", short_name="ed", default="/tmp/brokenegg_transformer/extra",
+      name="extra_dir", short_name="ed", default="/tmp/brokenegg_orig/extra",
       help=flags_core.help_wrap(
           "Directory for where the extra dataset is found."))
   flags.DEFINE_string(
