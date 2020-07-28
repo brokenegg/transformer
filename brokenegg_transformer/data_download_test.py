@@ -39,7 +39,7 @@ def main():
   import os
 
   supported_langs = {
-    'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'gl', 'ko'
+    'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'el', 'ko'
   }
 
   rx = re.compile(r'[^.]+\.([^.]+)\.tsv\s+([0-9]+)')
