@@ -47,51 +47,51 @@ _WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/W
 
 # <langpair> => <#samples>
 _WIKIMATRIX_LANG_PAIR_SAMPLES = {
-  'ar-de': None, # 99258
-  'ar-en': None, # 999762
-  'ar-es': None, # 174557
-  'ar-fr': None, # 163549
-  'ar-gl': None, # 50528
-  'ar-ja': None, # 83059
-  'ar-ko': None, # 48869
-  'ar-ru': None, # 125312
-  'ar-zh': None, # 86236
-  'de-en': None, # 1573437
-  'de-es': None, # 418724
-  'de-fr': None, # 626166
-  'de-gl': None, # 80842
-  'de-ja': None, # 217547
-  'de-ko': None, # 82280
-  'de-ru': None, # 368206
-  'de-zh': None, # 134077
-  'en-es': None, # 3377911
-  'en-fr': None, # 2757883
-  'en-gl': None, # 446151
-  'en-ja': None, # 851706
-  'en-ko': None, # 306900
-  'en-ru': None, # 1661908
-  'en-zh': None, # 786511
-  'es-fr': None, # 905760
-  'es-gl': None, # 610824
-  'es-ja': None, # 219260
-  'es-ko': None, # 108385
-  'es-ru': None, # 393314
-  'es-zh': None, # 174315
-  'fr-gl': None, # 154872
-  'fr-ja': None, # 214852
-  'fr-ko': None, # 89109
-  'fr-ru': None, # 410005
-  'fr-zh': None, # 157013
-  'gl-ja': None, # 50922
-  'gl-ko': None, # 28478
-  'gl-ru': None, # 84460
-  'gl-zh': None, # 46609
-  'ja-ko': None, # 222118
-  'ja-ru': None, # 196556
-  'ja-zh': None, # 267409
-  'ko-ru': None, # 89951
-  'ko-zh': None, # 57932
-  'ru-zh': None, # 148733
+  'ar-de': 835734,
+  'ar-en': 1968009,
+  'ar-es': 829661,
+  'ar-fr': 851422,
+  'ar-gl': 278093,
+  'ar-ja': 669984,
+  'ar-ko': 388887,
+  'ar-ru': 821288,
+  'ar-zh': 582415,
+  'de-en': 6227188,
+  'de-es': 2550295,
+  'de-fr': 3350816,
+  'de-gl': 553141,
+  'de-ja': 2271178,
+  'de-ko': 913748,
+  'de-ru': 2835270,
+  'de-zh': 1358412,
+  'en-es': 6452177,
+  'en-fr': 6562360,
+  'en-gl': 996323,
+  'en-ja': 3895992,
+  'en-ko': 1345630,
+  'en-ru': 5203872,
+  'en-zh': 2595119,
+  'es-fr': 2856402,
+  'es-gl': 995530,
+  'es-ja': 1802993,
+  'es-ko': 854665,
+  'es-ru': 2182862,
+  'es-zh': 1214322,
+  'fr-gl': 608229,
+  'fr-ja': 2010367,
+  'fr-ko': 873398,
+  'fr-ru': 2483459,
+  'fr-zh': 1309915,
+  'gl-ja': 384189,
+  'gl-ko': 237116,
+  'gl-ru': 503260,
+  'gl-zh': 319008,
+  'ja-ko': 968704,
+  'ja-ru': 1950844,
+  'ja-zh': 1325674,
+  'ko-ru': 855551,
+  'ko-zh': 486671,
+  'ru-zh': 1264230,
 }
 
 # Strings to inclue in the generated files.
@@ -101,9 +101,8 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # evaluation datasets are tagged as "dev" for development.
 
 # Vocabulary constants
-_SPM_TRAIN_FILE = _PREFIX + "spm_train.en-es-ja.txt"
+_SPM_TRAIN_FILE = "spm_train.txt"
 _SPM_TRAIN_SAMPLES = 3000000
-_VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
 _VOCAB_SIZE = 64000
 
 # Number of files to split train and evaluation data
@@ -387,12 +386,16 @@ def main(unused_argv):
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
-  if os.path.exists(os.path.join(FLAGS.data_dir, _VOCAB_FILE)):
-    logging.info("Already available: %s", (_VOCAB_FILE,))
+  if FLAGS.lang_pairs == 'en-es,en-ja,ja-es':
+    vocab_file = _PREFIX + ".en-es-ja.spm64k.model"
+  else:
+    vocab_file = _PREFIX + ".lang10.spm64k.model"
+  if os.path.exists(os.path.join(FLAGS.data_dir, vocab_file)):
+    logging.info("Already available: %s", (vocab_file,))
   else:
     spm_train_file = make_spm_train_file(FLAGS.data_dir, lang_pairs, train_files)
-    train_spm(spm_train_file, FLAGS.data_dir, _VOCAB_FILE)
-  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, _VOCAB_FILE)
+    train_spm(spm_train_file, FLAGS.data_dir, vocab_file)
+  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, vocab_file)
 
   # Tokenize and save data as Examples in the TFRecord format.
   logging.info("Step 4/5: Preprocessing and saving data")
