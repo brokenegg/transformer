@@ -47,9 +47,51 @@ _WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/W
 
 # <langpair> => <#samples>
 _WIKIMATRIX_LANG_PAIR_SAMPLES = {
-  'en-es': 6452177,
-  'en-ja': 3895992,
-  'es-ja': 1802993,
+  'ar-de': None, # 99258
+  'ar-en': None, # 999762
+  'ar-es': None, # 174557
+  'ar-fr': None, # 163549
+  'ar-gl': None, # 50528
+  'ar-ja': None, # 83059
+  'ar-ko': None, # 48869
+  'ar-ru': None, # 125312
+  'ar-zh': None, # 86236
+  'de-en': None, # 1573437
+  'de-es': None, # 418724
+  'de-fr': None, # 626166
+  'de-gl': None, # 80842
+  'de-ja': None, # 217547
+  'de-ko': None, # 82280
+  'de-ru': None, # 368206
+  'de-zh': None, # 134077
+  'en-es': None, # 3377911
+  'en-fr': None, # 2757883
+  'en-gl': None, # 446151
+  'en-ja': None, # 851706
+  'en-ko': None, # 306900
+  'en-ru': None, # 1661908
+  'en-zh': None, # 786511
+  'es-fr': None, # 905760
+  'es-gl': None, # 610824
+  'es-ja': None, # 219260
+  'es-ko': None, # 108385
+  'es-ru': None, # 393314
+  'es-zh': None, # 174315
+  'fr-gl': None, # 154872
+  'fr-ja': None, # 214852
+  'fr-ko': None, # 89109
+  'fr-ru': None, # 410005
+  'fr-zh': None, # 157013
+  'gl-ja': None, # 50922
+  'gl-ko': None, # 28478
+  'gl-ru': None, # 84460
+  'gl-zh': None, # 46609
+  'ja-ko': None, # 222118
+  'ja-ru': None, # 196556
+  'ja-zh': None, # 267409
+  'ko-ru': None, # 89951
+  'ko-zh': None, # 57932
+  'ru-zh': None, # 148733
 }
 
 # Strings to inclue in the generated files.
@@ -315,7 +357,13 @@ def main(unused_argv):
   """Obtain training and evaluation data for the Transformer model."""
   make_dir(FLAGS.raw_dir)
   make_dir(FLAGS.data_dir)
-  lang_pairs = FLAGS.lang_pairs.split(',')
+  if FLAGS.lang_pairs:
+    lang_pairs = FLAGS.lang_pairs.split(',')
+  else:
+    lang_pairs = sorted(_WIKIMATRIX_LANG_PAIR_SAMPLES.keys())
+    logging.info("Language pair is not given. Use:")
+    for lang_pair in lang_pairs:
+      logging.info("  %s" % lang_pair)
 
   # Download test_data
   logging.info("Step 1/5: Downloading test data")
@@ -328,6 +376,14 @@ def main(unused_argv):
   for lang_pair in lang_pairs:
     train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
     train_files[lang_pair] = train_file
+    if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
+      logging.info("Counting number of samples.")
+      with open(train_file) as f:
+        n = len(f.readlines())
+      _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
+      with open('sample_count.txt', 'wa') as f:
+        f.write("  '%s': %d,\n" % (lang_pair, n))
+      logging.info("%s: %d samples" % (lang_pair, n))
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
@@ -375,7 +431,7 @@ def define_data_download_flags():
       help=flags_core.help_wrap(
           "Path where the raw data will be downloaded and extracted."))
   flags.DEFINE_string(
-      name="lang_pairs", short_name="lp", default="en-es,en-ja,es-ja",
+      name="lang_pairs", short_name="lp", default="",
       help=flags_core.help_wrap(
           "Language pairs to convert."))
   flags.DEFINE_string(
