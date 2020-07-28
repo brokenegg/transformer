@@ -399,7 +399,7 @@ def main(unused_argv):
       shuffle_records(fname)
 
   logging.info("Step 4/5: Preprocessing and saving extra data")
-  if FLAGS.extra_dir:
+  if not FLAGS.extra_dir:
     logging.info("No --extra_dir flag is given. Skipping.")
   else:
     extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
