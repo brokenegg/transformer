@@ -369,7 +369,6 @@ def main(unused_argv):
       with open('sample_count.txt', 'a') as f:
         f.write("  '%s': %d,\n" % (lang_pair, n))
       logging.info("%s: %d samples" % (lang_pair, n))
-  return
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
