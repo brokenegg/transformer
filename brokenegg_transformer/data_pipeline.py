@@ -305,16 +305,14 @@ def _all_lang_pairs():
 
 def _all_langs(lang_pairs):
   langs = set()
-  for langpair, _ in lang_pairs:
-    inputs_lang, targets_lang = langpair.split('-')
-    langs.add(inputs_lang)
-    langs.add(targets_lang)
+  for langpair in lang_pairs:
+    lang1, lang2 = langpair.split('-')
+    langs.add(lang1)
+    langs.add(lang2)
   return sorted(list(langs))
-
 
 def _get_lang_map(vocab_size, lang_pairs):
   return {v: vocab_size + k for k, v in enumerate(langs)}
-
 
 def _need_rev(lang_pair):
   lang1, lang2 = lang_pair.split('-')
