@@ -49,7 +49,7 @@ _WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/W
 _WIKIMATRIX_LANG_PAIR_SAMPLES = {
   # As of 2020 Jul 28
   'ar-de': 835734,
-  'ar-el': None,
+  'ar-el': 365898,
   'ar-en': 1968009,
   'ar-es': 829661,
   'ar-fr': 851422,
@@ -57,7 +57,7 @@ _WIKIMATRIX_LANG_PAIR_SAMPLES = {
   'ar-ko': 388887,
   'ar-ru': 821288,
   'ar-zh': 582415,
-  'de-el': None,
+  'de-el': 770612,
   'de-en': 6227188,
   'de-es': 2550295,
   'de-fr': 3350816,
@@ -65,13 +65,13 @@ _WIKIMATRIX_LANG_PAIR_SAMPLES = {
   'de-ko': 913748,
   'de-ru': 2835270,
   'de-zh': 1358412,
-  'el-en': None,
-  'el-es': None,
-  'el-fr': None,
-  'el-ja': None,
-  'el-ko': None,
-  'el-ru': None,
-  'el-zh': None,
+  'el-en': 1407429,
+  'el-es': 746432,
+  'el-fr': 773559,
+  'el-ja': 531379,
+  'el-ko': 301106,
+  'el-ru': 715980,
+  'el-zh': 427862,
   'en-es': 6452177,
   'en-fr': 6562360,
   'en-ja': 3895992,
@@ -346,7 +346,7 @@ def main(unused_argv):
     lang_pairs = FLAGS.lang_pairs.split(',')
   else:
     lang_pairs = sorted(_WIKIMATRIX_LANG_PAIR_SAMPLES.keys())
-    logging.info("Language pair is not given. Use:")
+    logging.info("--lang_pair is not given. Use:")
     for lang_pair in lang_pairs:
       logging.info("  %s" % lang_pair)
 
