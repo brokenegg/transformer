@@ -381,7 +381,7 @@ def main(unused_argv):
       with gzip.open(train_file, 'rt') as f:
         n = len(f.readlines())
       _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
-      with open('sample_count.txt', 'wa') as f:
+      with open('sample_count.txt', 'a') as f:
         f.write("  '%s': %d,\n" % (lang_pair, n))
       logging.info("%s: %d samples" % (lang_pair, n))
 
