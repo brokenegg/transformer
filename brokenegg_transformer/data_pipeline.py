@@ -294,7 +294,7 @@ def _generate_synthetic_data(params):
 
 def _default_all_lang_pairs():
   supported_langs = {
-    'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'gl', 'ko'
+    'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'el', 'ko'
   }
   return sorted([
     '%s-%s' % (lang1, lang2)
