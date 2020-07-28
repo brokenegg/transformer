@@ -292,7 +292,7 @@ def _generate_synthetic_data(params):
   return dataset.batch(batch, drop_remainder=True)
 
 
-def _all_lang_pairs():
+def _default_all_lang_pairs():
   supported_langs = {
     'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'gl', 'ko'
   }
@@ -327,7 +327,10 @@ def _ordered_lang_pair(lang_pair):
   return '%s-%s' % (lang1, lang2)
 
 def _get_file_dataset(params, tag, add_extra, skip_extra):
-  lang_pairs = _all_lang_pairs()
+  if params.get('lang_pairs'):
+    lang_pairs = params['lang_pairs']
+  else:
+    lang_pairs = _default_all_lang_pairs()
   langs = _all_langs(lang_pairs)
   lang_map = _get_lang_map(64000, langs)
   
