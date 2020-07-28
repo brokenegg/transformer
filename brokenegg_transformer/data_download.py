@@ -47,6 +47,7 @@ _WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/W
 
 # <langpair> => <#samples>
 _WIKIMATRIX_LANG_PAIR_SAMPLES = {
+  # As of 2020 Jul 28
   'ar-de': 835734,
   'ar-en': 1968009,
   'ar-es': 829661,
@@ -213,21 +214,6 @@ def train_spm(spm_train_file, data_dir, vocab_file):
 ###############################################################################
 # Data preprocessing
 ###############################################################################
-def all_langs(lang_pairs):
-  langs = set()
-  for langpair, _ in lang_pairs:
-    inputs_lang, targets_lang = langpair.split('-')
-    langs.add(inputs_lang)
-    langs.add(targets_lang)
-  return sorted(list(langs))
-
-
-def get_lang_map(subtokenizer, lang_pairs):
-  langs = all_langs(lang_pairs)
-  offset = subtokenizer.vocab_size
-  return {v: offset + k for k, v in enumerate(langs)}
-
-
 def encode_and_save_files(
     subtokenizer, data_dir, lang_pair, raw_files, total_train_shards, total_eval_shards, eval_ratio,
     input_column=1, target_column=2):
@@ -403,6 +389,7 @@ def main(unused_argv):
     train_file = train_files[lang_pair]
     num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
     train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+    assert train_shards > 0
     eval_shareds = 1
     eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
     train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
@@ -412,15 +399,18 @@ def main(unused_argv):
       shuffle_records(fname)
 
   logging.info("Step 4/5: Preprocessing and saving extra data")
-  extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
-  train_shards = FLAGS.num_extra_samples // _TRAIN_SAMPLES_PER_SHARD
-  eval_ratio = 0.0
-  train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-      subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
-      train_shards, 0, eval_ratio,
-      input_column=0, target_column=1)
-  for fname in train_tfrecord_files:
-    shuffle_records(fname)
+  if FLAGS.extra_dir:
+    logging.info("No --extra_dir flag is given. Skipping.")
+  else:
+    extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
+    train_shards = FLAGS.num_extra_samples // _TRAIN_SAMPLES_PER_SHARD
+    eval_ratio = 0.0
+    train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+        subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
+        train_shards, 0, eval_ratio,
+        input_column=0, target_column=1)
+    for fname in train_tfrecord_files:
+      shuffle_records(fname)
 
 
 def define_data_download_flags():
@@ -438,7 +428,7 @@ def define_data_download_flags():
       help=flags_core.help_wrap(
           "Language pairs to convert."))
   flags.DEFINE_string(
-      name="extra_dir", short_name="ed", default="/tmp/brokenegg_orig/extra",
+      name="extra_dir", short_name="ed", default="",
       help=flags_core.help_wrap(
           "Directory for where the extra dataset is found."))
   flags.DEFINE_string(

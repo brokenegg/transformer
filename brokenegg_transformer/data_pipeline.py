@@ -292,12 +292,67 @@ def _generate_synthetic_data(params):
   return dataset.batch(batch, drop_remainder=True)
 
 
+def _all_lang_pairs():
+  supported_langs = {
+    'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'gl', 'ko'
+  }
+  return [
+    '%s-%s' % (lang1, lang2)
+    for lang1 in supported_langs
+    for lang2 in supported_langs
+    if lang1 != lang2
+  ]
+
+def _all_langs(lang_pairs):
+  langs = set()
+  for langpair, _ in lang_pairs:
+    inputs_lang, targets_lang = langpair.split('-')
+    langs.add(inputs_lang)
+    langs.add(targets_lang)
+  return sorted(list(langs))
+
+
+def _get_lang_map(vocab_size, lang_pairs):
+  return {v: vocab_size + k for k, v in enumerate(langs)}
+
+
+def _need_rev(lang_pair):
+  lang1, lang2 = lang_pair.split('-')
+  assert lang1 != lang2
+  return lang1 > lang2
+
+def _get_file_dataset(params, tag, add_extra, skip_extra):
+  lang_pairs = _all_lang_pairs()
+  langs = _all_langs(lang_pairs)
+  lang_map = _get_lang_map(64000, lang_pairs)
+  
+  tgt_lang_ids = [
+    lang_map[lang_pair.split('-')[1]]
+    for lang_pair in lang_pairs]
+
+  need_reverse = [_need_rev(lang_pair) for lang_pair in lang_pairs]
+
+  if add_extra:
+    lang_pairs.append('extra')
+    tgt_lang_ids.append(64000 + len(langs))
+    need_reverse.append(False)
+
+  file_patterns = [
+    os.path.join(params["data_dir"] or "", "*-%s-%s*" % (lang_pair, tag))
+    for lang_pair in lang_pairs
+  ]
+
+  dataset = tf.data.Dataset.from_tensor_slices(
+    (tf.constant(file_patterns, dtype=tf.string),
+     tf.constant(tgt_lang_ids, dtype=tf.int64),
+     tf.constant(need_reverse, dtype=tf.bool)))
+  return dataset, len(file_patterns)
+
 def train_input_fn(params, ctx=None):
   """Load and return dataset of batched examples for use during training."""
   if params["use_synthetic_data"]:
     return _generate_synthetic_data(params)
-  lang_map = {'en': 1, 'es': 2, 'ja': 3}
-  
+
   def f(file_pattern, tgt_lang, rev):
     return _read_and_batch_from_files(
         file_pattern, tgt_lang, rev, params["batch_size"], params["max_length"],
@@ -305,16 +360,8 @@ def train_input_fn(params, ctx=None):
         repeat=params["repeat_dataset"], static_batch=params["static_batch"],
         num_replicas=params["num_gpus"], ctx=ctx)
 
-  file_patterns = [
-    os.path.join(params["data_dir"] or "", "*-%s-train*" % (lang_pair))
-    for lang_pair in ['en-es', 'en-ja', 'en-es', 'es-ja', 'en-ja', 'es-ja', 'chitchat']
-  ]
-
-  dataset = tf.data.Dataset.from_tensor_slices(
-    (tf.constant(file_patterns, dtype=tf.string),
-    tf.constant([64002, 64003, 64001, 64003, 64001, 64002, 64000], dtype=tf.int64),
-    tf.cast(tf.constant([0, 0, 1, 0, 1, 1, 0], dtype=tf.int64), tf.bool)))
-  dataset = dataset.interleave(f, cycle_length=7, block_length=1)
+  dataset, cycle_length = _get_file_dataset(params, 'train', add_extra=False, skip_extra=False)
+  dataset = dataset.interleave(f, cycle_length=cycle_length, block_length=1)
   return dataset
 
 def eval_input_fn(params, ctx=None):
@@ -329,16 +376,8 @@ def eval_input_fn(params, ctx=None):
         static_batch=params["static_batch"], num_replicas=params["num_gpus"],
         ctx=ctx)
 
-  file_patterns = [
-    os.path.join(params["data_dir"] or "", "*-%s-dev*" % (lang_pair))
-    for lang_pair in ['en-es', 'en-ja', 'en-es', 'es-ja', 'en-ja', 'es-ja']
-  ]
-
-  dataset = tf.data.Dataset.from_tensor_slices(
-    (tf.constant(file_patterns, dtype=tf.string),
-    tf.constant([64002, 64003, 64001, 64003, 64001, 64002], dtype=tf.int64),
-    tf.cast(tf.constant([0, 0, 1, 0, 1, 1], dtype=tf.int64), tf.bool)))
-  dataset = dataset.interleave(f, cycle_length=7, block_length=1)
+  dataset, _ = _get_file_dataset(params, 'dev', add_extra=False, skip_extra=False)
+  dataset = dataset.interleave(f, cycle_length=1, block_length=1)
   return dataset
 
 def map_data_for_transformer_fn(x, y):
