@@ -375,7 +375,7 @@ def main(unused_argv):
   if FLAGS.lang_pairs == 'en-es,en-ja,ja-es':
     vocab_file = _PREFIX + ".en-es-ja.spm64k.model"
   else:
-    vocab_file = _PREFIX + ".lang10.spm64k.model"
+    vocab_file = _PREFIX + "_lang10.spm64k.model"
   if os.path.exists(os.path.join(FLAGS.data_dir, vocab_file)):
     logging.info("Already available: %s", (vocab_file,))
   else:
