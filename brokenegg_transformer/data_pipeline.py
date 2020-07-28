@@ -296,12 +296,12 @@ def _all_lang_pairs():
   supported_langs = {
     'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'gl', 'ko'
   }
-  return [
+  return sorted([
     '%s-%s' % (lang1, lang2)
     for lang1 in supported_langs
     for lang2 in supported_langs
     if lang1 != lang2
-  ]
+  ])
 
 def _all_langs(lang_pairs):
   langs = set()
@@ -329,7 +329,7 @@ def _ordered_lang_pair(lang_pair):
 def _get_file_dataset(params, tag, add_extra, skip_extra):
   lang_pairs = _all_lang_pairs()
   langs = _all_langs(lang_pairs)
-  lang_map = _get_lang_map(64000, lang_pairs)
+  lang_map = _get_lang_map(64000, langs)
   
   tgt_lang_ids = [
     lang_map[lang_pair.split('-')[1]]
