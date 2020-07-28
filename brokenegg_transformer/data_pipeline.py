@@ -311,13 +311,20 @@ def _all_langs(lang_pairs):
     langs.add(lang2)
   return sorted(list(langs))
 
-def _get_lang_map(vocab_size, lang_pairs):
+def _get_lang_map(vocab_size, langs):
   return {v: vocab_size + k for k, v in enumerate(langs)}
 
 def _need_rev(lang_pair):
   lang1, lang2 = lang_pair.split('-')
   assert lang1 != lang2
   return lang1 > lang2
+
+def _ordered_lang_pair(lang_pair):
+  lang1, lang2 = lang_pair.split('-')
+  assert lang1 != lang2
+  if lang1 > lang2:
+    lang2, lang1 = lang1, lang2
+  return '%s-%s' % (lang1, lang2)
 
 def _get_file_dataset(params, tag, add_extra, skip_extra):
   lang_pairs = _all_lang_pairs()
@@ -336,7 +343,7 @@ def _get_file_dataset(params, tag, add_extra, skip_extra):
     need_reverse.append(False)
 
   file_patterns = [
-    os.path.join(params["data_dir"] or "", "*-%s-%s*" % (lang_pair, tag))
+    os.path.join(params["data_dir"] or "", "*-%s-%s*" % ((_ordered_lang_pair(lang_pair)), tag))
     for lang_pair in lang_pairs
   ]
 
