@@ -378,7 +378,7 @@ def main(unused_argv):
     train_files[lang_pair] = train_file
     if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
       logging.info("Counting number of samples.")
-      with open(train_file) as f:
+      with gzip.open(train_file, 'rt') as f:
         n = len(f.readlines())
       _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
       with open('sample_count.txt', 'wa') as f:
