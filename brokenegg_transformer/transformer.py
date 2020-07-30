@@ -92,9 +92,9 @@ class Transformer(tf.keras.Model):
     self.embedding_softmax_layer = embedding_layer.EmbeddingSharedWeights(
         params["vocab_size"], params["embedding_size"])
     self.embedding_hidden_mapping_in = tf.keras.layers.Dense(
-      params["embedding_size"], params['hidden_size'], activation=None)
+      params['hidden_size'], activation=None)
     self.embedding_hidden_mapping_out = tf.keras.layers.Dense(
-      params['hidden_size'], params['embedding_size'], activation='relu'
+      params['embedding_size'], activation='relu'
     )
     self.encoder_stack = EncoderStack(params)
     self.decoder_stack = DecoderStack(params)
