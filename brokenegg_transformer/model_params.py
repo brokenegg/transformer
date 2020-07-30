@@ -62,6 +62,7 @@ BASE_PARAMS = defaultdict(
     # BrokenEgg extension
     targets_with_sos=True,
     lang_dropout=0.1,
+    embedding_size=128,
 )
 
 BIG_PARAMS = BASE_PARAMS.copy()
