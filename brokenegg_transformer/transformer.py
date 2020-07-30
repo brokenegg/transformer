@@ -90,7 +90,12 @@ class Transformer(tf.keras.Model):
     super(Transformer, self).__init__(name=name)
     self.params = params
     self.embedding_softmax_layer = embedding_layer.EmbeddingSharedWeights(
-        params["vocab_size"], params["hidden_size"])
+        params["vocab_size"], params["embedding_size"])
+    self.embedding_hidden_mapping_in = tf.keras.layers.Linear(
+      params["embedding_size"], params['hidden_size'])
+    self.embedding_hidden_mapping_out = tf.keras.layers.Dense(
+      params['hidden_size'], params['embedding_size'], activation='relu'
+    )
     self.encoder_stack = EncoderStack(params)
     self.decoder_stack = DecoderStack(params)
 
@@ -170,6 +175,7 @@ class Transformer(tf.keras.Model):
       # applying dropout.
       embedded_inputs = self.embedding_softmax_layer(inputs)
       embedded_inputs = tf.cast(embedded_inputs, self.params["dtype"])
+      embedded_inputs = self.embedding_hidden_mapping_in(embedded_inputs)
       inputs_padding = model_utils.get_padding(inputs)
       attention_bias = tf.cast(attention_bias, self.params["dtype"])
 
@@ -205,6 +211,7 @@ class Transformer(tf.keras.Model):
       if self.params["targets_with_sos"]:
         decoder_inputs = self.embedding_softmax_layer(targets[:, :-1])
         decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
+        decoder_inputs = self.embedding_hidden_mapping_in(decoder_inputs)
         attention_bias = tf.cast(attention_bias, self.params["dtype"])
       else:
         assert False
@@ -212,6 +219,7 @@ class Transformer(tf.keras.Model):
         # encoding and applying dropout.
         decoder_inputs = self.embedding_softmax_layer(targets)
         decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
+        decoder_inputs = self.embedding_hidden_mapping_in(decoder_inputs)
         attention_bias = tf.cast(attention_bias, self.params["dtype"])
         with tf.name_scope("shift_targets"):
           # Shift targets to the right, and remove the last element
@@ -236,6 +244,7 @@ class Transformer(tf.keras.Model):
           decoder_self_attention_bias,
           attention_bias,
           training=training)
+      outputs = self.embedding_hidden_mapping_out(outputs)
       logits = self.embedding_softmax_layer(outputs, mode="linear")
       logits = tf.cast(logits, tf.float32)
       return logits
@@ -270,6 +279,7 @@ class Transformer(tf.keras.Model):
 
       # Preprocess decoder input by getting embeddings and adding timing signal.
       decoder_input = self.embedding_softmax_layer(decoder_input)
+      decoder_input = self.embedding_hidden_mapping_in(decoder_input)
 
       if self.params["padded_decode"]:
         timing_signal_shape = timing_signal.shape.as_list()
@@ -293,6 +303,7 @@ class Transformer(tf.keras.Model):
           training=training,
           cache=cache,
           decode_loop_step=i if self.params["padded_decode"] else None)
+      decoder_outputs = self.embedding_hidden_mapping_out(decoder_outputs)
       logits = self.embedding_softmax_layer(decoder_outputs, mode="linear")
       logits = tf.squeeze(logits, axis=[1])
       return logits, cache
