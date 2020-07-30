@@ -47,9 +47,52 @@ _WIKIMATRIX_URL_TEMPLATE = "https://dl.fbaipublicfiles.com/laser/WikiMatrix/v1/W
 
 # <langpair> => <#samples>
 _WIKIMATRIX_LANG_PAIR_SAMPLES = {
+  # As of 2020 Jul 28
+  'ar-de': 835734,
+  'ar-el': 365898,
+  'ar-en': 1968009,
+  'ar-es': 829661,
+  'ar-fr': 851422,
+  'ar-ja': 669984,
+  'ar-ko': 388887,
+  'ar-ru': 821288,
+  'ar-zh': 582415,
+  'de-el': 770612,
+  'de-en': 6227188,
+  'de-es': 2550295,
+  'de-fr': 3350816,
+  'de-ja': 2271178,
+  'de-ko': 913748,
+  'de-ru': 2835270,
+  'de-zh': 1358412,
+  'el-en': 1407429,
+  'el-es': 746432,
+  'el-fr': 773559,
+  'el-ja': 531379,
+  'el-ko': 301106,
+  'el-ru': 715980,
+  'el-zh': 427862,
   'en-es': 6452177,
+  'en-fr': 6562360,
   'en-ja': 3895992,
+  'en-ko': 1345630,
+  'en-ru': 5203872,
+  'en-zh': 2595119,
+  'es-fr': 2856402,
   'es-ja': 1802993,
+  'es-ko': 854665,
+  'es-ru': 2182862,
+  'es-zh': 1214322,
+  'fr-ja': 2010367,
+  'fr-ko': 873398,
+  'fr-ru': 2483459,
+  'fr-zh': 1309915,
+  'ja-ko': 968704,
+  'ja-ru': 1950844,
+  'ja-zh': 1325674,
+  'ko-ru': 855551,
+  'ko-zh': 486671,
+  'ru-zh': 1264230,
 }
 
 # Strings to inclue in the generated files.
@@ -59,9 +102,8 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # evaluation datasets are tagged as "dev" for development.
 
 # Vocabulary constants
-_SPM_TRAIN_FILE = _PREFIX + "spm_train.en-es-ja.txt"
+_SPM_TRAIN_FILE = "spm_train.txt"
 _SPM_TRAIN_SAMPLES = 3000000
-_VOCAB_FILE = _PREFIX + ".en-es-ja.spm64k.model"
 _VOCAB_SIZE = 64000
 
 # Number of files to split train and evaluation data
@@ -172,21 +214,6 @@ def train_spm(spm_train_file, data_dir, vocab_file):
 ###############################################################################
 # Data preprocessing
 ###############################################################################
-def all_langs(lang_pairs):
-  langs = set()
-  for langpair, _ in lang_pairs:
-    inputs_lang, targets_lang = langpair.split('-')
-    langs.add(inputs_lang)
-    langs.add(targets_lang)
-  return sorted(list(langs))
-
-
-def get_lang_map(subtokenizer, lang_pairs):
-  langs = all_langs(lang_pairs)
-  offset = subtokenizer.vocab_size
-  return {v: offset + k for k, v in enumerate(langs)}
-
-
 def encode_and_save_files(
     subtokenizer, data_dir, lang_pair, raw_files, total_train_shards, total_eval_shards, eval_ratio,
     input_column=1, target_column=2):
@@ -315,7 +342,13 @@ def main(unused_argv):
   """Obtain training and evaluation data for the Transformer model."""
   make_dir(FLAGS.raw_dir)
   make_dir(FLAGS.data_dir)
-  lang_pairs = FLAGS.lang_pairs.split(',')
+  if FLAGS.lang_pairs:
+    lang_pairs = FLAGS.lang_pairs.split(',')
+  else:
+    lang_pairs = sorted(_WIKIMATRIX_LANG_PAIR_SAMPLES.keys())
+    logging.info("--lang_pair is not given. Use:")
+    for lang_pair in lang_pairs:
+      logging.info("  %s" % lang_pair)
 
   # Download test_data
   logging.info("Step 1/5: Downloading test data")
@@ -328,15 +361,27 @@ def main(unused_argv):
   for lang_pair in lang_pairs:
     train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
     train_files[lang_pair] = train_file
+    if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
+      logging.info("Counting number of samples.")
+      with gzip.open(train_file, 'rt') as f:
+        n = len(f.readlines())
+      _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
+      with open('sample_count.txt', 'a') as f:
+        f.write("  '%s': %d,\n" % (lang_pair, n))
+      logging.info("%s: %d samples" % (lang_pair, n))
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
-  if os.path.exists(os.path.join(FLAGS.data_dir, _VOCAB_FILE)):
-    logging.info("Already available: %s", (_VOCAB_FILE,))
+  if FLAGS.lang_pairs == 'en-es,en-ja,ja-es':
+    vocab_file = _PREFIX + ".en-es-ja.spm64k.model"
+  else:
+    vocab_file = _PREFIX + "_lang10.spm64k.model"
+  if os.path.exists(os.path.join(FLAGS.data_dir, vocab_file)):
+    logging.info("Already available: %s", (vocab_file,))
   else:
     spm_train_file = make_spm_train_file(FLAGS.data_dir, lang_pairs, train_files)
-    train_spm(spm_train_file, FLAGS.data_dir, _VOCAB_FILE)
-  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, _VOCAB_FILE)
+    train_spm(spm_train_file, FLAGS.data_dir, vocab_file)
+  subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, vocab_file)
 
   # Tokenize and save data as Examples in the TFRecord format.
   logging.info("Step 4/5: Preprocessing and saving data")
@@ -344,6 +389,7 @@ def main(unused_argv):
     train_file = train_files[lang_pair]
     num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
     train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+    assert train_shards > 0
     eval_shareds = 1
     eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
     train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
@@ -353,15 +399,18 @@ def main(unused_argv):
       shuffle_records(fname)
 
   logging.info("Step 4/5: Preprocessing and saving extra data")
-  extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
-  train_shards = FLAGS.num_extra_samples // _TRAIN_SAMPLES_PER_SHARD
-  eval_ratio = 0.0
-  train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-      subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
-      train_shards, 0, eval_ratio,
-      input_column=0, target_column=1)
-  for fname in train_tfrecord_files:
-    shuffle_records(fname)
+  if not FLAGS.extra_dir:
+    logging.info("No --extra_dir flag is given. Skipping.")
+  else:
+    extra_files = [os.path.join(FLAGS.extra_dir, name) for name in tf.io.gfile.listdir(FLAGS.extra_dir)]
+    train_shards = FLAGS.num_extra_samples // _TRAIN_SAMPLES_PER_SHARD
+    eval_ratio = 0.0
+    train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+        subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
+        train_shards, 0, eval_ratio,
+        input_column=0, target_column=1)
+    for fname in train_tfrecord_files:
+      shuffle_records(fname)
 
 
 def define_data_download_flags():
@@ -375,11 +424,11 @@ def define_data_download_flags():
       help=flags_core.help_wrap(
           "Path where the raw data will be downloaded and extracted."))
   flags.DEFINE_string(
-      name="lang_pairs", short_name="lp", default="en-es,en-ja,es-ja",
+      name="lang_pairs", short_name="lp", default="",
       help=flags_core.help_wrap(
           "Language pairs to convert."))
   flags.DEFINE_string(
-      name="extra_dir", short_name="ed", default="/tmp/brokenegg_orig/extra",
+      name="extra_dir", short_name="ed", default="",
       help=flags_core.help_wrap(
           "Directory for where the extra dataset is found."))
   flags.DEFINE_string(
