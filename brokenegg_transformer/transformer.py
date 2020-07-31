@@ -96,6 +96,8 @@ class Transformer(tf.keras.Model):
     self.embedding_hidden_mapping_out = tf.keras.layers.Dense(
       params['embedding_size'], activation='relu'
     )
+    self.embedding_layer_norm = tf.keras.layers.LayerNormalization(
+        epsilon=1e-6, dtype="float32")
     self.encoder_stack = EncoderStack(params)
     self.decoder_stack = DecoderStack(params)
 
@@ -245,6 +247,7 @@ class Transformer(tf.keras.Model):
           attention_bias,
           training=training)
       outputs = self.embedding_hidden_mapping_out(outputs)
+      outputs = self.embedding_layer_norm(outputs)
       logits = self.embedding_softmax_layer(outputs, mode="linear")
       logits = tf.cast(logits, tf.float32)
       return logits
@@ -304,6 +307,7 @@ class Transformer(tf.keras.Model):
           cache=cache,
           decode_loop_step=i if self.params["padded_decode"] else None)
       decoder_outputs = self.embedding_hidden_mapping_out(decoder_outputs)
+      decoder_outputs = self.embedding_layer_norm(decoder_outputs)
       logits = self.embedding_softmax_layer(decoder_outputs, mode="linear")
       logits = tf.squeeze(logits, axis=[1])
       return logits, cache
