@@ -60,7 +60,7 @@ BASE_PARAMS = defaultdict(
     allow_ffn_pad=True,
 
     # BrokenEgg extension
-    targets_with_sos=True,
+    targets_with_lang_id=True,
     lang_dropout=0.1,
 )
 

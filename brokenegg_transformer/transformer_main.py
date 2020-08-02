@@ -265,7 +265,7 @@ class TransformerTask(object):
         inputs, targets = inputs
         with tf.GradientTape() as tape:
           logits = model([inputs, targets], training=True)
-          if params["targets_with_sos"]:
+          if params["targets_with_lang_id"]:
             targets = targets[:, 1:]
           loss = metrics.transformer_loss(logits, targets,
                                           params["label_smoothing"],
@@ -381,7 +381,7 @@ class TransformerTask(object):
     flags_obj = self.flags_obj
 
     with tf.name_scope("model"):
-      model = transformer.create_model(params, is_train=False, has_initial_ids=True)
+      model = transformer.create_model(params, is_train=False)
       self._load_weights_if_possible(
           model, tf.train.latest_checkpoint(self.flags_obj.model_dir))
       model.summary()
