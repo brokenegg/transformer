@@ -422,6 +422,11 @@ class TransformerTask(object):
       logging.info("Load weights: {}".format(init_weight_path))
       # TODO(b/139414977): Having the same variable restoring method for both
       # TPU and GPU.
+      if True:
+        checkpoint = tf.train.Checkpoint(
+            model=model, optimizer=self._create_optimizer())
+        checkpoint.restore(init_weight_path)
+        return
       if self.use_tpu:
         checkpoint = tf.train.Checkpoint(
             model=model, optimizer=self._create_optimizer())
