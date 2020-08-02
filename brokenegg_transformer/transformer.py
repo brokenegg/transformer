@@ -36,7 +36,7 @@ from brokenegg_transformer.utils.tokenizer import EOS_ID
 # pylint: disable=not-callable
 
 
-def create_model(params, is_train, has_initial_ids=False):
+def create_model(params, is_train):
   """Creates transformer model."""
   with tf.name_scope("model"):
     if is_train:
@@ -59,7 +59,7 @@ def create_model(params, is_train, has_initial_ids=False):
 
     else:
       inputs = tf.keras.layers.Input((None,), dtype="int64", name="inputs")
-      if has_initial_ids:
+      if params['targets_with_lang_id']:
         initial_ids = tf.keras.layers.Input((), dtype="int32", name="initial_ids")
       else:
         initial_ids = None
@@ -202,7 +202,7 @@ class Transformer(tf.keras.Model):
       float32 tensor with shape [batch_size, target_length, vocab_size]
     """
     with tf.name_scope("decode"):
-      if self.params["targets_with_sos"]:
+      if self.params["targets_with_lang_id"]:
         decoder_inputs = self.embedding_softmax_layer(targets[:, :-1])
         decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
         attention_bias = tf.cast(attention_bias, self.params["dtype"])

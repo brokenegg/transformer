@@ -70,6 +70,8 @@ class Subtokenizer(object):
 
   def decode(self, subtokens):
     """Converts list of int subtokens ids into a string."""
+    if hasattr(subtokens, 'tolist'): # To convert NumPy array.
+      subtokens = subtokens.tolist()
     decoded = self.sp.decode_ids(subtokens)
     return decoded
 
