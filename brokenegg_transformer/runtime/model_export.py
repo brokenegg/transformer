@@ -37,7 +37,7 @@ def export_numpy(checkpoint_path, weight_file):
 
   params = model_params.BASE_PARAMS.copy()
   params["dtype"] = tf.float32
-  model = transformer.create_model(params, is_train=True, has_initial_ids=False)
+  model = transformer.create_model(params, is_train=True)
 
   ckpt_path = tf.train.latest_checkpoint(checkpoint_path)
   print('Restoring from %s' % ckpt_path)
@@ -178,7 +178,7 @@ def model_test():
     logits = internal_model([inputs, targets], training=True)
     model = tf.keras.Model([inputs, targets], logits)
   else:
-    model = transformer.create_model(params, is_train=True, has_initial_ids=True)
+    model = transformer.create_model(params, is_train=True)
 
   ckpt_path = tf.train.latest_checkpoint(CHECKPOINT_PATH)
   print('Restoring from %s' % ckpt_path)
