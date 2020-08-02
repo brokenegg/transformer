@@ -384,8 +384,8 @@ def eval_input_fn(params, ctx=None):
         static_batch=params["static_batch"], num_replicas=params["num_gpus"],
         ctx=ctx)
 
-  dataset, _ = _get_file_dataset(params, 'dev', add_extra=False, skip_extra=False)
-  dataset = dataset.interleave(f, cycle_length=1, block_length=1)
+  dataset, cycle_length = _get_file_dataset(params, 'dev', add_extra=False, skip_extra=False)
+  dataset = dataset.interleave(f, cycle_length=cycle_length, block_length=1)
   return dataset
 
 def map_data_for_transformer_fn(x, y):

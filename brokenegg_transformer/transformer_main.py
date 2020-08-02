@@ -388,7 +388,13 @@ class TransformerTask(object):
     subtokenizer = tokenizer.Subtokenizer(flags_obj.vocab_file)
 
     ds = data_pipeline.eval_input_fn(params)
-    ds = ds.map(lambda x, y: x).take(_SINGLE_SAMPLE)
+    if params['targets_with_lang_id']:
+      ds = ds.map(lambda x, y: {
+        'inputs': x,
+        'initial_ids': tf.cast(y[:, 0], tf.int32)
+      }).take(_SINGLE_SAMPLE)
+    else:
+      ds = ds.map(lambda x, y: x).take(_SINGLE_SAMPLE)
     ret = model.predict(ds)
     val_outputs, _ = ret
     length = len(val_outputs)
