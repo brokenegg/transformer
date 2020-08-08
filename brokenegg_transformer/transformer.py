@@ -149,9 +149,9 @@ class Transformer(tf.keras.Model):
       # Generate output sequence if targets is None, or return logits if target
       # sequence is known.
       if targets is None:
-        return self.predict(encoder_outputs, attention_bias, training, initial_ids=initial_ids)
+        return self.predict(encoder_outputs, training, initial_ids=initial_ids)
       else:
-        logits = self.decode(targets, encoder_outputs, attention_bias, training)
+        logits = self.decode(targets, encoder_outputs, training)
         return logits
 
   def encode(self, inputs, attention_bias, training):
@@ -184,10 +184,15 @@ class Transformer(tf.keras.Model):
         encoder_inputs = tf.nn.dropout(
             encoder_inputs, rate=self.params["layer_postprocess_dropout"])
 
-      return self.encoder_stack(
+      encoder_outputs = self.encoder_stack(
           encoder_inputs, attention_bias, inputs_padding, training=training)
 
-  def decode(self, targets, encoder_outputs, attention_bias, training):
+      encoder_outputs = tf.math.reduce_mean(
+          encoder_outputs, axis=1, keepdims=True)
+
+      return encoder_outputs
+
+  def decode(self, targets, encoder_outputs, training):
     """Generate logits for each value in the target sequence.
 
     Args:
@@ -205,14 +210,12 @@ class Transformer(tf.keras.Model):
       if self.params["targets_with_lang_id"]:
         decoder_inputs = self.embedding_softmax_layer(targets[:, :-1])
         decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
-        attention_bias = tf.cast(attention_bias, self.params["dtype"])
       else:
         assert False
         # Prepare inputs to decoder layers by shifting targets, adding positional
         # encoding and applying dropout.
         decoder_inputs = self.embedding_softmax_layer(targets)
         decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
-        attention_bias = tf.cast(attention_bias, self.params["dtype"])
         with tf.name_scope("shift_targets"):
           # Shift targets to the right, and remove the last element
           decoder_inputs = tf.pad(decoder_inputs,
@@ -227,14 +230,14 @@ class Transformer(tf.keras.Model):
         decoder_inputs = tf.nn.dropout(
             decoder_inputs, rate=self.params["layer_postprocess_dropout"])
 
+      decoder_inputs += encoder_outputs
+
       # Run values
       decoder_self_attention_bias = model_utils.get_decoder_self_attention_bias(
           length, dtype=self.params["dtype"])
       outputs = self.decoder_stack(
           decoder_inputs,
-          encoder_outputs,
           decoder_self_attention_bias,
-          attention_bias,
           training=training)
       logits = self.embedding_softmax_layer(outputs, mode="linear")
       logits = tf.cast(logits, tf.float32)
@@ -285,11 +288,11 @@ class Transformer(tf.keras.Model):
 
         self_attention_bias = decoder_self_attention_bias[:, :, i:i + 1, :i + 1]
 
+      decoder_input += cache.get("encoder_outputs")
+
       decoder_outputs = self.decoder_stack(
           decoder_input,
-          cache.get("encoder_outputs"),
           self_attention_bias,
-          cache.get("encoder_decoder_attention_bias"),
           training=training,
           cache=cache,
           decode_loop_step=i if self.params["padded_decode"] else None)
@@ -299,18 +302,14 @@ class Transformer(tf.keras.Model):
 
     return symbols_to_logits_fn
 
-  def predict(self, encoder_outputs, encoder_decoder_attention_bias, training, initial_ids=None):
+  def predict(self, encoder_outputs, training, initial_ids=None):
     """Return predicted sequence."""
     encoder_outputs = tf.cast(encoder_outputs, self.params["dtype"])
     if self.params["padded_decode"]:
       batch_size = encoder_outputs.shape.as_list()[0]
-      input_length = encoder_outputs.shape.as_list()[1]
     else:
       batch_size = tf.shape(encoder_outputs)[0]
-      input_length = tf.shape(encoder_outputs)[1]
-    max_decode_length = input_length + self.params["extra_decode_length"]
-    encoder_decoder_attention_bias = tf.cast(encoder_decoder_attention_bias,
-                                             self.params["dtype"])
+    max_decode_length = self.params["extra_decode_length"]
 
     symbols_to_logits_fn = self._get_symbols_to_logits_fn(
         max_decode_length, training)
@@ -343,7 +342,6 @@ class Transformer(tf.keras.Model):
 
     # Add encoder output and attention bias to the cache.
     cache["encoder_outputs"] = encoder_outputs
-    cache["encoder_decoder_attention_bias"] = encoder_decoder_attention_bias
 
     # Use beam search to find the top beam_size sequences and scores.
     decoded_ids, scores = beam_search.sequence_beam_search(
@@ -495,15 +493,11 @@ class DecoderStack(tf.keras.layers.Layer):
       self_attention_layer = attention_layer.SelfAttention(
           params["hidden_size"], params["num_heads"],
           params["attention_dropout"])
-      enc_dec_attention_layer = attention_layer.Attention(
-          params["hidden_size"], params["num_heads"],
-          params["attention_dropout"])
       feed_forward_network = ffn_layer.FeedForwardNetwork(
           params["hidden_size"], params["filter_size"], params["relu_dropout"])
 
       self.layers.append([
           PrePostProcessingWrapper(self_attention_layer, params),
-          PrePostProcessingWrapper(enc_dec_attention_layer, params),
           PrePostProcessingWrapper(feed_forward_network, params)
       ])
     self.output_normalization = tf.keras.layers.LayerNormalization(
@@ -517,9 +511,7 @@ class DecoderStack(tf.keras.layers.Layer):
 
   def call(self,
            decoder_inputs,
-           encoder_outputs,
            decoder_self_attention_bias,
-           attention_bias,
            training,
            cache=None,
            decode_loop_step=None):
@@ -550,8 +542,7 @@ class DecoderStack(tf.keras.layers.Layer):
     """
     for n, layer in enumerate(self.layers):
       self_attention_layer = layer[0]
-      enc_dec_attention_layer = layer[1]
-      feed_forward_network = layer[2]
+      feed_forward_network = layer[1]
 
       # Run inputs through the sublayers.
       layer_name = "layer_%d" % n
@@ -564,12 +555,6 @@ class DecoderStack(tf.keras.layers.Layer):
               training=training,
               cache=layer_cache,
               decode_loop_step=decode_loop_step)
-        with tf.name_scope("encdec_attention"):
-          decoder_inputs = enc_dec_attention_layer(
-              decoder_inputs,
-              encoder_outputs,
-              attention_bias,
-              training=training)
         with tf.name_scope("ffn"):
           decoder_inputs = feed_forward_network(
               decoder_inputs, training=training)
