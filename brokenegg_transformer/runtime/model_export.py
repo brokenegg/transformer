@@ -165,7 +165,7 @@ def export_onnx(weight_file, output_file='brokenegg-20200711.onnx'):
     with open(output_file, "wb") as f:
         f.write(model_proto.SerializeToString())
 
-def model_test():
+def export_test(checkpoint_path):
   from brokenegg_transformer import model_params
   from brokenegg_transformer import transformer
 
@@ -180,7 +180,7 @@ def model_test():
   else:
     model = transformer.create_model(params, is_train=True)
 
-  ckpt_path = tf.train.latest_checkpoint(CHECKPOINT_PATH)
+  ckpt_path = tf.train.latest_checkpoint(checkpoint_path)
   print('Restoring from %s' % ckpt_path)
   #model.load_weights(ckpt_path)
   checkpoint = tf.train.Checkpoint(model=model)
@@ -244,6 +244,8 @@ def main(_):
     test_tflite_tf22()
   elif flags_obj.format == 'saved_model':
     export_saved_model(weight_file=flags_obj.weight_file)
+  elif flags_obj.format == 'test':
+    export_test(flags_obj.model_dir)
   elif flags_obj.format == 'onnx':
     export_onnx(weight_file=flags_obj.weight_file)
   else:
