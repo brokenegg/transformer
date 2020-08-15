@@ -160,8 +160,9 @@ class Transformer(tf.keras.Model):
       encoder_outputs = self.encode(inputs, attention_bias, training)
 
       with tf.name_scope("code_attention"):
-        encoder_outputs = self.code_attention_layer(self.codes[None, :, :], encoder_outputs, attention_bias, training)
-        attention_bias = tf.zeros([1, self.n_codes])
+        codes = tf.repeat(self.codes[None, :, :], tf.shape(inputs)[0], axis=0)
+        encoder_outputs = self.code_attention_layer(codes, encoder_outputs, attention_bias, training)
+        attention_bias = tf.zeros([tf.shape(codes)[0], self.n_codes])
 
       # Generate output sequence if targets is None, or return logits if target
       # sequence is known.
