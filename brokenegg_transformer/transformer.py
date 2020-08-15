@@ -94,6 +94,18 @@ class Transformer(tf.keras.Model):
     self.encoder_stack = EncoderStack(params)
     self.decoder_stack = DecoderStack(params)
 
+    self.n_codes = 4
+    with tf.name_scope("code_attention"):
+      hidden_size = self.params["hidden_size"]
+      self.codes = self.add_weight(
+          "weights",
+          shape=[self.n_codes, hidden_size],
+          initializer=tf.random_normal_initializer(
+              mean=0., stddev=hidden_size**-0.5))
+    self.code_attention_layer = attention_layer.Attention(
+          params["hidden_size"], params["num_heads"],
+          params["attention_dropout"])
+
   def get_config(self):
     return {
         "params": self.params,
@@ -146,6 +158,11 @@ class Transformer(tf.keras.Model):
       # Run the inputs through the encoder layer to map the symbol
       # representations to continuous representations.
       encoder_outputs = self.encode(inputs, attention_bias, training)
+
+      with tf.name_scope("code_attention"):
+        encoder_outputs = self.code_attention_layer(self.codes[None, :, :], encoder_outputs, attention_bias, training)
+        attention_bias = tf.zeros([1, self.n_codes])
+
       # Generate output sequence if targets is None, or return logits if target
       # sequence is known.
       if targets is None:
