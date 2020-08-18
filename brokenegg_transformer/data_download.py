@@ -385,18 +385,19 @@ def main(unused_argv):
 
   # Get paths of download/extracted training and evaluation files.
   logging.info("Step 2/5: Downloading data from source")
-  train_files = {}
-  for lang_pair in lang_pairs:
-    train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
-    train_files[lang_pair] = train_file
-    if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
-      logging.info("Counting number of samples.")
-      with gzip.open(train_file, 'rt') as f:
-        n = len(f.readlines())
-      _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
-      with open('sample_count.txt', 'a') as f:
-        f.write("  '%s': %d,\n" % (lang_pair, n))
-      logging.info("%s: %d samples" % (lang_pair, n))
+  if not FLAGS.single_dir:
+    train_files = {}
+    for lang_pair in lang_pairs:
+      train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
+      train_files[lang_pair] = train_file
+      if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
+        logging.info("Counting number of samples.")
+        with gzip.open(train_file, 'rt') as f:
+          n = len(f.readlines())
+        _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
+        with open('sample_count.txt', 'a') as f:
+          f.write("  '%s': %d,\n" % (lang_pair, n))
+        logging.info("%s: %d samples" % (lang_pair, n))
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
@@ -413,18 +414,19 @@ def main(unused_argv):
 
   # Tokenize and save data as Examples in the TFRecord format.
   logging.info("Step 4/5: Preprocessing and saving data")
-  for lang_pair in lang_pairs:
-    train_file = train_files[lang_pair]
-    num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
-    train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
-    assert train_shards > 0
-    eval_shareds = 1
-    eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
-    train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-        subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
-        train_shards, eval_shareds, eval_ratio)
-    for fname in train_tfrecord_files:
-      shuffle_records(fname)
+  if not FLAGS.single_dir:
+    for lang_pair in lang_pairs:
+      train_file = train_files[lang_pair]
+      num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
+      train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+      assert train_shards > 0
+      eval_shareds = 1
+      eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
+      train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+          subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
+          train_shards, eval_shareds, eval_ratio)
+      for fname in train_tfrecord_files:
+        shuffle_records(fname)
 
   _SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
    'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
