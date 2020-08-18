@@ -447,7 +447,7 @@ def main(unused_argv):
       train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
           subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
           train_shards, eval_shareds, eval_ratio,
-          input_column=0, target_column=0))
+          input_column=0, target_column=0)
       for fname in train_tfrecord_files:
         shuffle_records(fname)
 
