@@ -428,7 +428,7 @@ def main(unused_argv):
 
   _SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
    'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
-  _SINGLE_LANG_SAMPLES = {k:v in k, v for _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
+  _SINGLE_LANG_SAMPLES = {k:v for k, v in _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
 
   logging.info("Step 4/5: Preprocessing and saving single data")
   if not FLAGS.single_dir:
