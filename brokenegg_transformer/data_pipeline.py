@@ -292,16 +292,25 @@ def _generate_synthetic_data(params):
   return dataset.batch(batch, drop_remainder=True)
 
 
-def _default_all_lang_pairs():
+def _default_all_lang_pairs(add_single):
   supported_langs = {
     'en', 'es', 'fr', 'ru', 'de', 'ja', 'ar', 'zh', 'el', 'ko'
   }
-  return sorted([
+  single_langs = {
+    'ar', 'en', 'es', 'fr', 'ja', 'ko'
+  }
+  lang_pairs = [
     '%s-%s' % (lang1, lang2)
     for lang1 in supported_langs
     for lang2 in supported_langs
     if lang1 != lang2
-  ])
+  ]
+  if add_single:
+    lang_pairs += [
+      '%s-%s' % (lang, lang)
+      for lang in single_langs
+    ]
+  return sorted(lang_pairs)
 
 def _all_langs(lang_pairs):
   langs = set()
@@ -316,21 +325,21 @@ def _get_lang_map(vocab_size, langs):
 
 def _need_rev(lang_pair):
   lang1, lang2 = lang_pair.split('-')
-  assert lang1 != lang2
+  #assert lang1 != lang2
   return lang1 > lang2
 
 def _ordered_lang_pair(lang_pair):
   lang1, lang2 = lang_pair.split('-')
-  assert lang1 != lang2
+  #assert lang1 != lang2
   if lang1 > lang2:
     lang2, lang1 = lang1, lang2
   return '%s-%s' % (lang1, lang2)
 
-def _get_file_dataset(params, tag, add_extra, skip_extra):
+def _get_file_dataset(params, tag, add_single, add_extra, skip_extra):
   if params.get('lang_pairs'):
     lang_pairs = params['lang_pairs']
   else:
-    lang_pairs = _default_all_lang_pairs()
+    lang_pairs = _default_all_lang_pairs(add_single)
   langs = _all_langs(lang_pairs)
   lang_map = _get_lang_map(64000, langs)
   
@@ -368,7 +377,7 @@ def train_input_fn(params, ctx=None):
         repeat=params["repeat_dataset"], static_batch=params["static_batch"],
         num_replicas=params["num_gpus"], ctx=ctx)
 
-  dataset, cycle_length = _get_file_dataset(params, 'train', add_extra=False, skip_extra=False)
+  dataset, cycle_length = _get_file_dataset(params, 'train', add_single=True, add_extra=False, skip_extra=False)
   dataset = dataset.interleave(f, cycle_length=cycle_length, block_length=1)
   return dataset
 
@@ -384,7 +393,7 @@ def eval_input_fn(params, ctx=None):
         static_batch=params["static_batch"], num_replicas=params["num_gpus"],
         ctx=ctx)
 
-  dataset, cycle_length = _get_file_dataset(params, 'dev', add_extra=False, skip_extra=False)
+  dataset, cycle_length = _get_file_dataset(params, 'dev', add_single=False, add_extra=False, skip_extra=False)
   dataset = dataset.interleave(f, cycle_length=cycle_length, block_length=1)
   return dataset
 
