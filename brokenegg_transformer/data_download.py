@@ -440,13 +440,14 @@ def main(unused_argv):
       lang_pair = '%s-%s' % (lang, lang)
       train_file = os.path.join(FLAGS.single_dir, 'single-%s.txt.gz' % (lang,))
       num_samples = _SINGLE_LANG_SAMPLES[lang]
-      train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+      train_shards = num_samples // _TRAIN_SAMPLES_PER_SHARD
       assert train_shards > 0
-      eval_shareds = 1
-      eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
+      eval_shareds = 0
+      eval_ratio = 0.0
       train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
           subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
-          train_shards, eval_shareds, eval_ratio)
+          train_shards, eval_shareds, eval_ratio,
+          input_column=0, target_column=0))
       for fname in train_tfrecord_files:
         shuffle_records(fname)
 
