@@ -338,6 +338,34 @@ def make_dir(path):
     tf.gfile.MakeDirs(path)
 
 
+def split_single():
+  import gzip
+  import os
+  input_files = glob.glob('/tmp/brokenegg_orig/single/*.txt.gz')
+  lang_count = {lang: 0 for lang in supported_langs}
+  lang_count['*'] = 0
+  fouts = {
+    lang: gzip.open(os.path.join('/tmp/brokenegg_orig/single', 'single-%s-%s.txt.gz' % (lang, lang)), 'wt')
+    for lang in supported_langs
+  }
+  for input_file in input_files:
+    with gzip.open(input_file, 'rt') as f:
+      for i, line in enumerate(f):
+        parts = line.rstrip('\r\n').split('\t')
+        lang, text = parts
+        if lang in lang_count:
+          lang_count[lang] += 1
+          fouts[lang].write('%s\t%s\n' % (text, text))
+        else:
+          lang_count['*'] += 1
+        if i % 10000 == 0:
+          print('\r%d' % i, end='')
+          #break
+  for f in fouts.values():
+    f.close()
+  print(lang_count)
+
+
 def main(unused_argv):
   """Obtain training and evaluation data for the Transformer model."""
   make_dir(FLAGS.raw_dir)
@@ -398,6 +426,28 @@ def main(unused_argv):
     for fname in train_tfrecord_files:
       shuffle_records(fname)
 
+  _SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
+   'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
+  _SINGLE_LANG_SAMPLES = {k:v in k, v for _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
+
+  logging.info("Step 4/5: Preprocessing and saving single data")
+  if not FLAGS.single_dir:
+    logging.info("No --single_dir flag is given. Skipping.")
+  else:
+    for lang in _SINGLE_LANG_SAMPLES.keys():
+      lang_pair = '%s-%s' % (lang, lang)
+      train_file = os.path.join(FLAGS.single_dir, 'single-%s.txt.gz' % (lang,))
+      num_samples = _SINGLE_LANG_SAMPLES[lang]
+      train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+      assert train_shards > 0
+      eval_shareds = 1
+      eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
+      train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+          subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
+          train_shards, eval_shareds, eval_ratio)
+      for fname in train_tfrecord_files:
+        shuffle_records(fname)
+
   logging.info("Step 4/5: Preprocessing and saving extra data")
   if not FLAGS.extra_dir:
     logging.info("No --extra_dir flag is given. Skipping.")
@@ -427,6 +477,10 @@ def define_data_download_flags():
       name="lang_pairs", short_name="lp", default="",
       help=flags_core.help_wrap(
           "Language pairs to convert."))
+  flags.DEFINE_string(
+      name="single_dir", short_name="sd", default="",
+      help=flags_core.help_wrap(
+          "Directory for where the single dataset is found."))
   flags.DEFINE_string(
       name="extra_dir", short_name="ed", default="",
       help=flags_core.help_wrap(
