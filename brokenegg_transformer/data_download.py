@@ -183,7 +183,7 @@ def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
 
   if single_train_files:
     spm_train_single_samples = _SPM_TRAIN_SAMPLES * SPM_TRAIN_SINGLE_RATE
-    spm_train_samples = _SPM_TRAIN_SAMPLES - spm_traispm_train_single_samplesn_samples
+    spm_train_samples = _SPM_TRAIN_SAMPLES - spm_train_single_samples
   else:
     spm_train_samples = _SPM_TRAIN_SAMPLES
     spm_train_single_samples = 0
