@@ -380,7 +380,7 @@ def split_single(single_dir, data_dir):
     for lang, file in single_files.items()
   }
   for input_file in tf.io.gfile.listdir(os.path.join(single_dir)):
-    with gzip.open(input_file, 'rt') as f:
+    with gzip.open(os.path.join(single_dir, input_file), 'rt') as f:
       for i, line in enumerate(f):
         parts = line.rstrip('\r\n').split('\t')
         lang, text = parts
