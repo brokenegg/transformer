@@ -182,8 +182,8 @@ def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
     lang_count[lang2] += _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
 
   if single_train_files:
-    spm_train_samples = _SPM_TRAIN_SAMPLES * SPM_TRAIN_SINGLE_RATE
-    spm_train_single_samples = _SPM_TRAIN_SAMPLES - spm_train_samples
+    spm_train_single_samples = _SPM_TRAIN_SAMPLES * SPM_TRAIN_SINGLE_RATE
+    spm_train_samples = _SPM_TRAIN_SAMPLES - spm_traispm_train_single_samplesn_samples
   else:
     spm_train_samples = _SPM_TRAIN_SAMPLES
     spm_train_single_samples = 0
@@ -223,8 +223,7 @@ def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
             if count % 500000 == 0:
               logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
 
-
-  os.rename(spm_train_file + '.incomplete', spm_train_file)
+  tf.gfile.Rename(spm_train_file + '.incomplete', spm_train_file)
 
   return spm_train_file
 
@@ -376,7 +375,7 @@ def split_single(single_dir, data_dir):
   lang_count = {lang: 0 for lang in single_files.keys()}
   lang_count['*'] = 0
   fouts = {
-    lang: gzip.open(file, 'wt')
+    lang: gzip.open(file + '.incomplete', 'wt')
     for lang, file in single_files.items()
   }
   for input_file in tf.io.gfile.listdir(os.path.join(single_dir)):
@@ -392,9 +391,11 @@ def split_single(single_dir, data_dir):
         if i % 10000 == 0:
           print('\r%d' % i, end='')
           #break
+  print(lang_count)
   for f in fouts.values():
     f.close()
-  print(lang_count)
+  for lang, file in single_files.items()
+    tf.gfile.Rename(file + '.incomplete', file)
 
 
 def main(unused_argv):
