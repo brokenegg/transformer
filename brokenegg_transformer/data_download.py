@@ -373,7 +373,7 @@ def split_single(single_dir, data_dir):
     logging.info("Skipping. Split single files are available.")
     return single_files
 
-  lang_count = {lang: 0 for lang in supported_langs}
+  lang_count = {lang: 0 for lang in single_files.keys()}
   lang_count['*'] = 0
   fouts = {
     lang: gzip.open(file, 'wt')
