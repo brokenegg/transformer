@@ -394,7 +394,7 @@ def split_single(single_dir, data_dir):
   print(lang_count)
   for f in fouts.values():
     f.close()
-  for lang, file in single_files.items()
+  for lang, file in single_files.items():
     tf.gfile.Rename(file + '.incomplete', file)
 
 
