@@ -95,6 +95,11 @@ _WIKIMATRIX_LANG_PAIR_SAMPLES = {
   'ru-zh': 1264230,
 }
 
+_SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
+  'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
+_SINGLE_LANG_SAMPLES = {k:v for k, v in _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
+
+
 # Strings to inclue in the generated files.
 _PREFIX = "wikimatrix"
 _TRAIN_TAG = "train"
@@ -105,6 +110,7 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 _SPM_TRAIN_FILE = "spm_train.txt"
 _SPM_TRAIN_SAMPLES = 3000000
 _VOCAB_SIZE = 64000
+SPM_TRAIN_SINGLE_RATE = 0.2
 
 # Number of files to split train and evaluation data
 _TRAIN_SAMPLES_PER_SHARD = 45000
@@ -163,7 +169,7 @@ def get_vocab_file(raw_dir, data_dir, vocab_file):
   return tokenizer.Subtokenizer(os.path.join(data_dir, vocab_file))
 
 
-def make_spm_train_file(data_dir, lang_pairs, train_files):
+def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
   from collections import Counter
   spm_train_file = os.path.join(data_dir, _SPM_TRAIN_FILE)
   if os.path.exists(spm_train_file):
@@ -175,10 +181,19 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
     lang_count[lang1] += _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
     lang_count[lang2] += _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
 
+  if single_train_files:
+    spm_train_samples = _SPM_TRAIN_SAMPLES * SPM_TRAIN_SINGLE_RATE
+    spm_train_single_samples = _SPM_TRAIN_SAMPLES - spm_train_samples
+  else:
+    spm_train_samples = _SPM_TRAIN_SAMPLES
+    spm_train_single_samples = 0
+
   lang_rates = {
-    lang: (_SPM_TRAIN_SAMPLES * 1.01) / (len(lang_count) * lang_count[lang])
+    lang: (spm_train_samples * 1.01) / (len(lang_count) * lang_count[lang])
     for lang in lang_count
   }
+
+  single_rates = spm_train_single_samples / sum(_SINGLE_LANG_SAMPLES.values())
 
   with open(spm_train_file + '.incomplete', 'w') as fout:
     count = 0
@@ -198,6 +213,16 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
             count += 1
             if count % 500000 == 0:
               logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
+    for train_file in single_train_files.values():
+      with gzip.open(train_file, 'rt') as f:
+        for line in f:
+          parts = line.rstrip('\r\n').split('\t')
+          if random.random() < single_rate:
+            fout.write(parts[1] + '\n')
+            count += 1
+            if count % 500000 == 0:
+              logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
+
 
   os.rename(spm_train_file + '.incomplete', spm_train_file)
 
@@ -338,17 +363,23 @@ def make_dir(path):
     tf.gfile.MakeDirs(path)
 
 
-def split_single():
-  import gzip
-  import os
-  input_files = glob.glob('/tmp/brokenegg_orig/single/*.txt.gz')
+def split_single(single_dir, data_dir):
+  single_files = {
+    lang: os.path.join(data_dir, 'single-%s.txt.gz' % (lang,))
+    for lang in _SINGLE_LANG_SAMPLES.keys()
+  }
+
+  if all(os.path.exists(file) for file in single_files.values()):
+    logging.info("Skipping. Split single files are available.")
+    return single_files
+
   lang_count = {lang: 0 for lang in supported_langs}
   lang_count['*'] = 0
   fouts = {
-    lang: gzip.open(os.path.join('/tmp/brokenegg_orig/single', 'single-%s-%s.txt.gz' % (lang, lang)), 'wt')
-    for lang in supported_langs
+    lang: gzip.open(file, 'wt')
+    for lang, file in single_files.items()
   }
-  for input_file in input_files:
+  for input_file in tf.io.gfile.listdir(os.path.join(single_dir)):
     with gzip.open(input_file, 'rt') as f:
       for i, line in enumerate(f):
         parts = line.rstrip('\r\n').split('\t')
@@ -385,30 +416,36 @@ def main(unused_argv):
 
   # Get paths of download/extracted training and evaluation files.
   logging.info("Step 2/5: Downloading data from source")
-  if not FLAGS.single_dir:
-    train_files = {}
-    for lang_pair in lang_pairs:
-      train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
-      train_files[lang_pair] = train_file
-      if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
-        logging.info("Counting number of samples.")
-        with gzip.open(train_file, 'rt') as f:
-          n = len(f.readlines())
-        _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
-        with open('sample_count.txt', 'a') as f:
-          f.write("  '%s': %d,\n" % (lang_pair, n))
-        logging.info("%s: %d samples" % (lang_pair, n))
+  train_files = {}
+  for lang_pair in lang_pairs:
+    train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
+    train_files[lang_pair] = train_file
+    if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
+      logging.info("Counting number of samples.")
+      with gzip.open(train_file, 'rt') as f:
+        n = len(f.readlines())
+      _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
+      with open('sample_count.txt', 'a') as f:
+        f.write("  '%s': %d,\n" % (lang_pair, n))
+      logging.info("%s: %d samples" % (lang_pair, n))
+
+  if FLAGS.single_dir:
+    single_train_files = split_single(FLAGS.single_dir, FLAGS.data_dir)
+  else:
+    single_train_files = None
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
   if FLAGS.lang_pairs == 'en-es,en-ja,ja-es':
     vocab_file = _PREFIX + ".en-es-ja.spm64k.model"
+  elif FLAGS.single_dir:
+    vocab_file = _PREFIX + "_poly10.spm64k.model"
   else:
     vocab_file = _PREFIX + "_lang10.spm64k.model"
   if os.path.exists(os.path.join(FLAGS.data_dir, vocab_file)):
     logging.info("Already available: %s", (vocab_file,))
   else:
-    spm_train_file = make_spm_train_file(FLAGS.data_dir, lang_pairs, train_files)
+    spm_train_file = make_spm_train_file(FLAGS.data_dir, lang_pairs, train_files, single_train_files)
     train_spm(spm_train_file, FLAGS.data_dir, vocab_file)
   subtokenizer = get_vocab_file(FLAGS.raw_dir, FLAGS.data_dir, vocab_file)
 
@@ -427,10 +464,6 @@ def main(unused_argv):
           train_shards, eval_shareds, eval_ratio)
       for fname in train_tfrecord_files:
         shuffle_records(fname)
-
-  _SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
-   'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
-  _SINGLE_LANG_SAMPLES = {k:v for k, v in _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
 
   logging.info("Step 4/5: Preprocessing and saving single data")
   if not FLAGS.single_dir:
