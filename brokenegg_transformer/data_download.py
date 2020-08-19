@@ -162,6 +162,42 @@ def download_from_url(path, url):
     return filename
 
 
+def split_single(single_dir, data_dir):
+  single_files = {
+    lang: os.path.join(data_dir, 'single-%s.txt.gz' % (lang,))
+    for lang in _SINGLE_LANG_SAMPLES.keys()
+  }
+
+  if all(os.path.exists(file) for file in single_files.values()):
+    logging.info("Skipping. Split single files are available.")
+    return single_files
+
+  lang_count = {lang: 0 for lang in single_files.keys()}
+  lang_count['*'] = 0
+  fouts = {
+    lang: gzip.open(file + '.incomplete', 'wt')
+    for lang, file in single_files.items()
+  }
+  for input_file in tf.io.gfile.listdir(os.path.join(single_dir)):
+    with gzip.open(os.path.join(single_dir, input_file), 'rt') as f:
+      for i, line in enumerate(f):
+        parts = line.rstrip('\r\n').split('\t')
+        lang, text = parts
+        if lang in lang_count:
+          lang_count[lang] += 1
+          fouts[lang].write('%s\t%s\n' % (text, text))
+        else:
+          lang_count['*'] += 1
+        if i % 10000 == 0:
+          logging.info('%d lines processed' % (i + 1,))
+  logging.info('lang_count = %s' % (str(lang_count),))
+  for f in fouts.values():
+    f.close()
+  for lang, file in single_files.items():
+    tf.gfile.Rename(file + '.incomplete', file)
+  return single_files
+
+
 ###############################################################################
 # Vocabulary
 ###############################################################################
@@ -193,7 +229,7 @@ def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
     for lang in lang_count
   }
 
-  single_rates = spm_train_single_samples / sum(_SINGLE_LANG_SAMPLES.values())
+  single_rate = spm_train_single_samples / sum(_SINGLE_LANG_SAMPLES.values())
 
   with open(spm_train_file + '.incomplete', 'w') as fout:
     count = 0
@@ -213,6 +249,7 @@ def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
             count += 1
             if count % 500000 == 0:
               logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
+
     if single_train_files:
       for train_file in single_train_files.values():
         with gzip.open(train_file, 'rt') as f:
@@ -361,42 +398,6 @@ def make_dir(path):
   if not tf.gfile.Exists(path):
     logging.info("Creating directory %s" % path)
     tf.gfile.MakeDirs(path)
-
-
-def split_single(single_dir, data_dir):
-  single_files = {
-    lang: os.path.join(data_dir, 'single-%s.txt.gz' % (lang,))
-    for lang in _SINGLE_LANG_SAMPLES.keys()
-  }
-
-  if all(os.path.exists(file) for file in single_files.values()):
-    logging.info("Skipping. Split single files are available.")
-    return single_files
-
-  lang_count = {lang: 0 for lang in single_files.keys()}
-  lang_count['*'] = 0
-  fouts = {
-    lang: gzip.open(file + '.incomplete', 'wt')
-    for lang, file in single_files.items()
-  }
-  for input_file in tf.io.gfile.listdir(os.path.join(single_dir)):
-    with gzip.open(os.path.join(single_dir, input_file), 'rt') as f:
-      for i, line in enumerate(f):
-        parts = line.rstrip('\r\n').split('\t')
-        lang, text = parts
-        if lang in lang_count:
-          lang_count[lang] += 1
-          fouts[lang].write('%s\t%s\n' % (text, text))
-        else:
-          lang_count['*'] += 1
-        if i % 10000 == 0:
-          logging.info('%d lines processed' % (i + 1,))
-  logging.info('lang_count = %s' % (str(lang_count),))
-  for f in fouts.values():
-    f.close()
-  for lang, file in single_files.items():
-    tf.gfile.Rename(file + '.incomplete', file)
-  return single_files
 
 
 def main(unused_argv):
