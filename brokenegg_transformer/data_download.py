@@ -472,9 +472,8 @@ def main(unused_argv):
   if not FLAGS.single_dir:
     logging.info("No --single_dir flag is given. Skipping.")
   else:
-    for lang in _SINGLE_LANG_SAMPLES.keys():
+    for lang, train_file in single_train_files.items():
       lang_pair = '%s-%s' % (lang, lang)
-      train_file = os.path.join(FLAGS.single_dir, 'single-%s.txt.gz' % (lang,))
       num_samples = _SINGLE_LANG_SAMPLES[lang]
       train_shards = num_samples // _TRAIN_SAMPLES_PER_SHARD
       assert train_shards > 0
