@@ -213,15 +213,16 @@ def make_spm_train_file(data_dir, lang_pairs, train_files, single_train_files):
             count += 1
             if count % 500000 == 0:
               logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
-    for train_file in single_train_files.values():
-      with gzip.open(train_file, 'rt') as f:
-        for line in f:
-          parts = line.rstrip('\r\n').split('\t')
-          if random.random() < single_rate:
-            fout.write(parts[1] + '\n')
-            count += 1
-            if count % 500000 == 0:
-              logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
+    if single_train_files:
+      for train_file in single_train_files.values():
+        with gzip.open(train_file, 'rt') as f:
+          for line in f:
+            parts = line.rstrip('\r\n').split('\t')
+            if random.random() < single_rate:
+              fout.write(parts[1] + '\n')
+              count += 1
+              if count % 500000 == 0:
+                logging.info('%d lines written (%d%%)' % (count, count * 100 // _SPM_TRAIN_SAMPLES))
 
   tf.gfile.Rename(spm_train_file + '.incomplete', spm_train_file)
 
@@ -389,13 +390,13 @@ def split_single(single_dir, data_dir):
         else:
           lang_count['*'] += 1
         if i % 10000 == 0:
-          print('\r%d' % i, end='')
-          #break
-  print(lang_count)
+          logging.info('%d lines processed' % (i + 1,))
+  logging.info('lang_count = %s' % (str(lang_count),))
   for f in fouts.values():
     f.close()
   for lang, file in single_files.items():
     tf.gfile.Rename(file + '.incomplete', file)
+  return single_files
 
 
 def main(unused_argv):
