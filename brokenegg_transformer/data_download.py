@@ -188,8 +188,8 @@ def split_single(single_dir, data_dir):
           fouts[lang].write('%s\t%s\n' % (text, text))
         else:
           lang_count['*'] += 1
-        if i % 10000 == 0:
-          logging.info('%d lines processed' % (i + 1,))
+        if i % 100000 == 0:
+          logging.info('%s: %d lines processed' % (input_file, i + 1))
   logging.info('lang_count = %s' % (str(lang_count),))
   for f in fouts.values():
     f.close()
