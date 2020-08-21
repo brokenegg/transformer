@@ -355,7 +355,7 @@ def get_vocab_file_and_size():
     vocab_file = _PREFIX + "_lang10.spm64k.model"
     vocab_size = _VOCAB_SIZE_LARGE
 
-  return vocab_file
+  return vocab_file, vocab_size
 
 
 def main(unused_argv):
