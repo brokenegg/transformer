@@ -392,7 +392,7 @@ def main(unused_argv):
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
-  vocab_file, vocab_size = get_vocab_file_and_size(FLAGS.lang_pairs)
+  vocab_file, vocab_size = get_vocab_file_and_size()
   if os.path.exists(os.path.join(FLAGS.data_dir, vocab_file)):
     logging.info("Already available: %s", (vocab_file,))
   else:
