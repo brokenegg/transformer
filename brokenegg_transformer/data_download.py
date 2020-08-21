@@ -349,7 +349,7 @@ def get_vocab_file_and_size():
   langs = '-'.join(langs)
 
   if FLAGS.lang_pairs:
-    vocab_file = _PREFIX + "." + langs + ".spm64k.model"
+    vocab_file = _PREFIX + "." + langs + ".spm32k.model"
     vocab_size = _VOCAB_SIZE
   else:
     vocab_file = _PREFIX + "_lang10.spm64k.model"
