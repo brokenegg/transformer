@@ -342,8 +342,8 @@ def make_dir(path):
 def get_vocab_file_and_size():
   langs = set(
     lang
-    for lang_pair in lang_pairs.split(',')
-    for lang in lang_pairs.split('-')
+    for lang_pair in FLAGS.lang_pairs.split(',')
+    for lang in lang_pair.split('-')
   )
   langs = sorted(langs)
   langs = '-'.join(langs)
