@@ -104,7 +104,8 @@ _EVAL_TAG = "dev"  # Following WMT and Tensor2Tensor conventions, in which the
 # Vocabulary constants
 _SPM_TRAIN_FILE = "spm_train.txt"
 _SPM_TRAIN_SAMPLES = 3000000
-_VOCAB_SIZE = 64000
+_VOCAB_SIZE = 32000
+_VOCAB_SIZE_LARGE = 64000
 
 # Number of files to split train and evaluation data
 _TRAIN_SAMPLES_PER_SHARD = 45000
@@ -204,11 +205,11 @@ def make_spm_train_file(data_dir, lang_pairs, train_files):
   return spm_train_file
 
 
-def train_spm(spm_train_file, data_dir, vocab_file):
+def train_spm(spm_train_file, data_dir, vocab_file, vocab_size):
   import sentencepiece as spm
   model_prefix = os.path.join(data_dir, vocab_file)[:-len('.model')]
   spm.SentencePieceTrainer.train(
-    f'--input={spm_train_file} --model_prefix={model_prefix} --vocab_size={_VOCAB_SIZE}')
+    f'--input={spm_train_file} --model_prefix={model_prefix} --vocab_size={vocab_size}')
 
 
 ###############################################################################
@@ -338,6 +339,25 @@ def make_dir(path):
     tf.gfile.MakeDirs(path)
 
 
+def get_vocab_file_and_size():
+  langs = set(
+    lang
+    for lang_pair in lang_pairs.split(',')
+    for lang in lang_pairs.split('-')
+  )
+  langs = sorted(langs)
+  langs = '-'.join(langs)
+
+  if FLAGS.lang_paris:
+    vocab_file = _PREFIX + "." + langs + ".spm64k.model"
+    vocab_size = _VOCAB_SIZE
+  else:
+    vocab_file = _PREFIX + "_lang10.spm64k.model"
+    vocab_size = _VOCAB_SIZE_LARGE
+
+  return vocab_file
+
+
 def main(unused_argv):
   """Obtain training and evaluation data for the Transformer model."""
   make_dir(FLAGS.raw_dir)
@@ -372,10 +392,7 @@ def main(unused_argv):
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
-  if FLAGS.lang_pairs == 'en-es,en-ja,ja-es':
-    vocab_file = _PREFIX + ".en-es-ja.spm64k.model"
-  else:
-    vocab_file = _PREFIX + "_lang10.spm64k.model"
+  vocab_file, vocab_size = get_vocab_file_and_size(FLAGS.lang_pairs)
   if os.path.exists(os.path.join(FLAGS.data_dir, vocab_file)):
     logging.info("Already available: %s", (vocab_file,))
   else:
