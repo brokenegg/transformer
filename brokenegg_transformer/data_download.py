@@ -481,18 +481,21 @@ def main(unused_argv):
 
   # Tokenize and save data as Examples in the TFRecord format.
   logging.info("Step 4/5: Preprocessing and saving data")
-  for lang_pair in lang_pairs:
-    train_file = train_files[lang_pair]
-    num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
-    train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
-    assert train_shards > 0
-    eval_shareds = 1
-    eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
-    train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-        subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
-        train_shards, eval_shareds, eval_ratio)
-    for fname in train_tfrecord_files:
-      shuffle_records(fname)
+  if FLAGS.single_dir:
+    logging.info("--single_dir flag is given. Skipping.")
+  else:
+    for lang_pair in lang_pairs:
+      train_file = train_files[lang_pair]
+      num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
+      train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+      assert train_shards > 0
+      eval_shareds = 1
+      eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
+      train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+          subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
+          train_shards, eval_shareds, eval_ratio)
+      for fname in train_tfrecord_files:
+        shuffle_records(fname)
 
   logging.info("Step 4/5: Preprocessing and saving single data")
   if not FLAGS.single_dir:
