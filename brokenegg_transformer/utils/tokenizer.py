@@ -40,7 +40,7 @@ class Subtokenizer(object):
     import sentencepiece as spm
     tf.logging.info("Initializing Subtokenizer from file %s." %
                               vocab_file)
-    self.sp = spm.SentencePieceProcessor()
+    self.sp_model = spm.SentencePieceProcessor()
 
     if vocab_file.startswith('gs://'):
       with tempfile.TemporaryDirectory() as tmp_dir:
@@ -51,9 +51,9 @@ class Subtokenizer(object):
           local_filename = os.path.join(tmp_dir, os.path.basename(filename))
           tf.io.gfile.copy(filename, local_filename, overwrite=False)
         local_filename = os.path.join(tmp_dir, os.path.basename(vocab_file))
-        self.sp.load(local_filename)
+        self.sp_model.load(local_filename)
     else:
-      self.sp.load(vocab_file)
+      self.sp_model.load(vocab_file)
 
   @staticmethod
   def init_from_files(
@@ -63,7 +63,7 @@ class Subtokenizer(object):
 
   def encode(self, raw_string, add_eos=False):
     """Encodes a string into a list of int subtoken ids."""
-    encoded = self.sp.encode_as_ids(raw_string)
+    encoded = self.sp_model.encode_as_ids(raw_string)
     if add_eos:
       encoded.append(EOS_ID)
     return encoded
@@ -72,12 +72,12 @@ class Subtokenizer(object):
     """Converts list of int subtokens ids into a string."""
     if hasattr(subtokens, 'tolist'): # To convert NumPy array.
       subtokens = subtokens.tolist()
-    decoded = self.sp.decode_ids(subtokens)
+    decoded = self.sp_model.decode_ids(subtokens)
     return decoded
 
   @property
   def vocab_size(self):
-    return self.sp.vocab_size()
+    return self.sp_model.vocab_size()
 
 def native_to_unicode(s):
   """Convert string to unicode (required in Python 2)."""

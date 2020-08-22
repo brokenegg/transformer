@@ -328,7 +328,7 @@ def _ordered_lang_pair(lang_pair):
 
 def _get_file_dataset(params, tag, add_extra, skip_extra):
   if params.get('lang_pairs'):
-    lang_pairs = params['lang_pairs']
+    lang_pairs = params['lang_pairs'].split(',')
   else:
     lang_pairs = _default_all_lang_pairs()
   langs = _all_langs(lang_pairs)
