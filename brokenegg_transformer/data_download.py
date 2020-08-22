@@ -503,17 +503,20 @@ def main(unused_argv):
   # Get paths of download/extracted training and evaluation files.
   logging.info("Step 2/5: Downloading data from source")
   train_files = {}
-  for lang_pair in lang_pairs:
-    train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
-    train_files[lang_pair] = train_file
-    if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
-      logging.info("Counting number of samples.")
-      with gzip.open(train_file, 'rt') as f:
-        n = len(f.readlines())
-      _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
-      with open('sample_count.txt', 'a') as f:
-        f.write("  '%s': %d,\n" % (lang_pair, n))
-      logging.info("%s: %d samples" % (lang_pair, n))
+  if FLAGS.single_dir:
+    logging.info("--single_dir flag is given. Skipping.")
+  else:
+    for lang_pair in lang_pairs:
+      train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
+      train_files[lang_pair] = train_file
+      if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
+        logging.info("Counting number of samples.")
+        with gzip.open(train_file, 'rt') as f:
+          n = len(f.readlines())
+        _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
+        with open('sample_count.txt', 'a') as f:
+          f.write("  '%s': %d,\n" % (lang_pair, n))
+        logging.info("%s: %d samples" % (lang_pair, n))
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
@@ -559,7 +562,7 @@ def main(unused_argv):
       train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
           subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
           train_shards, eval_shareds, eval_ratio,
-          input_column=0, target_column=0)
+          input_column=0, target_column=0, do_randomize=True)
       for fname in train_tfrecord_files:
         shuffle_records(fname)
 
