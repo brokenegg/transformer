@@ -203,15 +203,20 @@ class Transformer(tf.keras.Model):
       float32 tensor with shape [batch_size, target_length, vocab_size]
     """
     with tf.name_scope("decode"):
-      # Prepare inputs to decoder layers by shifting targets, adding positional
-      # encoding and applying dropout.
-      decoder_inputs = self.embedding_softmax_layer(targets)
-      decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
-      attention_bias = tf.cast(attention_bias, self.params["dtype"])
-      with tf.name_scope("shift_targets"):
-        # Shift targets to the right, and remove the last element
-        decoder_inputs = tf.pad(decoder_inputs,
-                                [[0, 0], [1, 0], [0, 0]])[:, :-1, :]
+      if self.params["targets_with_lang_id"]:
+        decoder_inputs = self.embedding_softmax_layer(targets[:, :-1])
+        decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
+        attention_bias = tf.cast(attention_bias, self.params["dtype"])
+      else:
+        # Prepare inputs to decoder layers by shifting targets, adding positional
+        # encoding and applying dropout.
+        decoder_inputs = self.embedding_softmax_layer(targets)
+        decoder_inputs = tf.cast(decoder_inputs, self.params["dtype"])
+        attention_bias = tf.cast(attention_bias, self.params["dtype"])
+        with tf.name_scope("shift_targets"):
+          # Shift targets to the right, and remove the last element
+          decoder_inputs = tf.pad(decoder_inputs,
+                                  [[0, 0], [1, 0], [0, 0]])[:, :-1, :]
       with tf.name_scope("add_pos_encoding"):
         length = tf.shape(decoder_inputs)[1]
         pos_encoding = self.position_embedding(decoder_inputs)
@@ -292,7 +297,7 @@ class Transformer(tf.keras.Model):
 
     return symbols_to_logits_fn
 
-  def predict(self, encoder_outputs, encoder_decoder_attention_bias, training):
+  def predict(self, encoder_outputs, encoder_decoder_attention_bias, training, initial_ids=None):
     """Return predicted sequence."""
     encoder_outputs = tf.cast(encoder_outputs, self.params["dtype"])
     if self.params["padded_decode"]:
@@ -309,7 +314,8 @@ class Transformer(tf.keras.Model):
         max_decode_length, training)
 
     # Create initial set of IDs that will be passed into symbols_to_logits_fn.
-    initial_ids = tf.zeros([batch_size], dtype=tf.int32)
+    if initial_ids is None:
+      initial_ids = tf.zeros([batch_size], dtype=tf.int32)
 
     # Create cache storing decoder attention values for each layer.
     # pylint: disable=g-complex-comprehension

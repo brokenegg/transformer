@@ -129,7 +129,8 @@ def translate_file(model,
       """Per replica step function."""
       tag = inputs[0]
       val_inputs = inputs[1]
-      val_outputs, _ = model([val_inputs], training=False)
+      val_initial_ids = tf.ones([tf.shape(val_inputs)[0]], dtype=tf.int32) * 65001
+      val_outputs, _ = model([val_inputs, val_initial_ids], training=False)
       return tag, val_outputs
 
     return distribution_strategy.run(_step_fn, args=(inputs,))
@@ -164,7 +165,8 @@ def translate_file(model,
         val_outputs[tags[k]] = unordered_val_outputs[k]
       val_outputs = np.reshape(val_outputs, [params["decode_batch_size"], -1])
     else:
-      val_outputs, _ = model.predict(text)
+      val_initial_ids = tf.ones([tf.shape(text)[0]], dtype=tf.int32) * 64001
+      val_outputs, _ = model.predict([text, val_initial_ids])
 
     length = len(val_outputs)
     for j in range(length):
