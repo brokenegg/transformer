@@ -200,7 +200,7 @@ def split_single(single_dir, data_dir, vocab_file):
       for i, line in enumerate(f):
         parts = line.rstrip('\r\n').split('\t')
         lang, text = parts
-        if lang in lang_count:
+        if lang in fouts:
           text = clean_text(text)
           if text:
             lang_count[lang] += 1
