@@ -40,7 +40,7 @@ class PositionEmbeddingLayerTest(keras_parameterized.TestCase):
 
     # When using static positional embedding shapes, the output is expected
     # to be the same as the input shape in all dimensions save batch.
-    expected_output_shape = [1, sequence_length, width]
+    expected_output_shape = [None, sequence_length, width]
     self.assertEqual(expected_output_shape, output_tensor.shape.as_list())
     # The default output dtype for this layer should be tf.float32.
     self.assertEqual(tf.float32, output_tensor.dtype)
@@ -55,7 +55,7 @@ class PositionEmbeddingLayerTest(keras_parameterized.TestCase):
 
     # When using static positional embedding shapes, the output is expected
     # to be the same as the input shape in all dimensions save batch.
-    expected_output_shape = [1, sequence_length, width]
+    expected_output_shape = [None, sequence_length, width]
     self.assertEqual(expected_output_shape, output_tensor.shape.as_list())
     # The default output dtype for this layer should be tf.float32.
     self.assertEqual(tf.float16, output_tensor.dtype)
@@ -72,7 +72,7 @@ class PositionEmbeddingLayerTest(keras_parameterized.TestCase):
     # When using dynamic positional embedding shapes, the output is expected
     # to be the same as the input shape in all dimensions - but may be None if
     # the input shape is None there.
-    expected_output_shape = [1, None, width]
+    expected_output_shape = [None, None, width]
     self.assertEqual(expected_output_shape, output_tensor.shape.as_list())
 
   def test_dynamic_layer_slicing(self):
@@ -98,6 +98,34 @@ class PositionEmbeddingLayerTest(keras_parameterized.TestCase):
 
     self.assertAllEqual([1, input_length, width], output_data.shape)
 
+  def test_relative_tensor_input(self):
+    hidden_size = 8
+    test_layer = position_embedding.RelativePositionEmbedding(
+        hidden_size=hidden_size)
+
+    # create a 3-dimensional input for test_layer to infer length as 1.
+    input_tensor = tf.constant([[[0] * hidden_size]])
+    output_tensor = test_layer(input_tensor)
+
+    # expected output is the theoretical result of the input based on
+    # sine cosine relative position embedding formula.
+    expected_output_tensor = tf.constant([[0, 0, 0, 0, 1, 1, 1, 1]])
+    self.assertAllEqual(output_tensor, expected_output_tensor)
+
+  def test_relative_length_input(self):
+    hidden_size = 8
+
+    # When we do not have tensor as input, we explicitly specify length
+    # value when initializing test_layer.
+    test_layer = position_embedding.RelativePositionEmbedding(
+        hidden_size=hidden_size)
+    input_tensor = None
+    output_tensor = test_layer(input_tensor, length=1)
+
+    # expected output is the theoretical result of the input based on
+    # sine cosine relative position embedding formula.
+    expected_output_tensor = tf.constant([[0, 0, 0, 0, 1, 1, 1, 1]])
+    self.assertAllEqual(output_tensor, expected_output_tensor)
 
 if __name__ == "__main__":
   tf.test.main()

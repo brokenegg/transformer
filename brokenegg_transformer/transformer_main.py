@@ -39,7 +39,6 @@ from brokenegg_transformer import transformer
 from brokenegg_transformer import translate
 from brokenegg_transformer.utils import tokenizer
 from brokenegg_transformer.utils.flags import core as flags_core
-from brokenegg_transformer.utils.logs import logger
 from brokenegg_transformer.utils.misc import distribution_utils
 from brokenegg_transformer.utils.misc import keras_utils
 
@@ -149,7 +148,7 @@ class TransformerTask(object):
     params["decode_batch_size"] = flags_obj.decode_batch_size
     params["decode_max_length"] = flags_obj.decode_max_length
     params["padded_decode"] = flags_obj.padded_decode
-    params["num_parallel_calls"] = (
+    params["max_io_parallelism"] = (
         flags_obj.num_parallel_calls or tf.data.experimental.AUTOTUNE)
 
     params["use_synthetic_data"] = flags_obj.use_synthetic_data
@@ -169,8 +168,6 @@ class TransformerTask(object):
         tpu_address=flags_obj.tpu or "")
     if self.use_tpu:
       params["num_replicas"] = self.distribution_strategy.num_replicas_in_sync
-      if not params["static_batch"]:
-        raise ValueError("TPU requires static batch for input data.")
     else:
       logging.info("Running transformer with num_gpus = %d", num_gpus)
 
@@ -240,11 +237,16 @@ class TransformerTask(object):
       train_ds = data_pipeline.train_input_fn(params)
       map_data_fn = data_pipeline.map_data_for_transformer_fn
       train_ds = train_ds.map(
-          map_data_fn, num_parallel_calls=params["num_parallel_calls"])
+          map_data_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     if params["use_ctl"]:
       train_ds_iterator = iter(train_ds)
 
     callbacks = self._create_callbacks(flags_obj.model_dir, 0, params)
+
+    # Only TimeHistory callback is supported for CTL
+    if params["use_ctl"]:
+      callbacks = [cb for cb in callbacks
+                   if isinstance(cb, keras_utils.TimeHistory)]
 
     # TODO(b/139418525): Refactor the custom training loop logic.
     @tf.function
@@ -264,8 +266,6 @@ class TransformerTask(object):
         inputs, targets = inputs
         with tf.GradientTape() as tape:
           logits = model([inputs, targets], training=True)
-          if params["targets_with_sos"]:
-            targets = targets[:, 1:]
           loss = metrics.transformer_loss(logits, targets,
                                           params["label_smoothing"],
                                           params["vocab_size"])
@@ -301,8 +301,13 @@ class TransformerTask(object):
         if not self.use_tpu:
           raise NotImplementedError(
               "Custom training loop on GPUs is not implemented.")
+
         # Runs training steps.
         with summary_writer.as_default():
+          for cb in callbacks:
+            cb.on_epoch_begin(current_iteration)
+            cb.on_batch_begin(0)
+
           train_steps(
               train_ds_iterator,
               tf.convert_to_tensor(train_steps_per_eval, dtype=tf.int32))
@@ -311,10 +316,18 @@ class TransformerTask(object):
           logging.info("Train Step: %d/%d / loss = %s", current_step,
                        flags_obj.train_steps, train_loss)
 
+          for cb in callbacks:
+            cb.on_batch_end(train_steps_per_eval - 1)
+            cb.on_epoch_end(current_iteration)
+
           if params["enable_tensorboard"]:
             for metric_obj in train_metrics:
               tf.compat.v2.summary.scalar(metric_obj.name, metric_obj.result(),
                                           current_step)
+              summary_writer.flush()
+
+        for cb in callbacks:
+          cb.on_train_end()
 
         if flags_obj.enable_checkpointing:
           # avoid check-pointing when running for benchmarking.
@@ -347,7 +360,8 @@ class TransformerTask(object):
 
     stats = ({
         "loss": train_loss
-    } if history is None else misc.build_stats(history, callbacks))
+    } if history is None else {})
+    misc.update_stats(history, stats, callbacks)
     if uncased_score and cased_score:
       stats["bleu_uncased"] = uncased_score
       stats["bleu_cased"] = cased_score
@@ -400,7 +414,7 @@ class TransformerTask(object):
                                      params["hidden_size"],
                                      params["learning_rate_warmup_steps"])
     scheduler_callback = optimizer.LearningRateScheduler(sfunc, init_steps)
-    callbacks = misc.get_callbacks(params["steps_between_evals"])
+    callbacks = misc.get_callbacks()
     callbacks.append(scheduler_callback)
     if params["enable_checkpointing"]:
       ckpt_full_path = os.path.join(cur_log_dir, "cp-{epoch:04d}.ckpt")
@@ -454,25 +468,26 @@ def _ensure_dir(log_dir):
 
 def main(_):
   flags_obj = flags.FLAGS
-  with logger.benchmark_context(flags_obj):
-    task = TransformerTask(flags_obj)
+  if flags_obj.enable_mlir_bridge:
+    tf.config.experimental.enable_mlir_bridge()
+  task = TransformerTask(flags_obj)
 
-    # Execute flag override logic for better model performance
-    if flags_obj.tf_gpu_thread_mode:
-      keras_utils.set_gpu_thread_mode_and_count(
-          per_gpu_thread_count=flags_obj.per_gpu_thread_count,
-          gpu_thread_mode=flags_obj.tf_gpu_thread_mode,
-          num_gpus=flags_obj.num_gpus,
-          datasets_num_private_threads=flags_obj.datasets_num_private_threads)
+  # Execute flag override logic for better model performance
+  if flags_obj.tf_gpu_thread_mode:
+    keras_utils.set_gpu_thread_mode_and_count(
+        per_gpu_thread_count=flags_obj.per_gpu_thread_count,
+        gpu_thread_mode=flags_obj.tf_gpu_thread_mode,
+        num_gpus=flags_obj.num_gpus,
+        datasets_num_private_threads=flags_obj.datasets_num_private_threads)
 
-    if flags_obj.mode == "train":
-      task.train()
-    elif flags_obj.mode == "predict":
-      task.predict()
-    elif flags_obj.mode == "eval":
-      task.eval()
-    else:
-      raise ValueError("Invalid mode {}".format(flags_obj.mode))
+  if flags_obj.mode == "train":
+    task.train()
+  elif flags_obj.mode == "predict":
+    task.predict()
+  elif flags_obj.mode == "eval":
+    task.eval()
+  else:
+    raise ValueError("Invalid mode {}".format(flags_obj.mode))
 
 
 if __name__ == "__main__":
