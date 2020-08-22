@@ -163,7 +163,22 @@ def download_from_url(path, url):
     return filename
 
 
-def split_single(single_dir, data_dir):
+def split_single(single_dir, data_dir, vocab_file):
+
+  def clean_text(text):
+    return ''.join([
+            ch
+            for ch in text
+            if ch in allowed_chars
+    ]).replace('  ', ' ').strip()
+
+  with tf.gfile.GFile(vocab_file[:-len('.model')] + '.vocab') as f:
+      vocab = [
+          line.split('\t')[0]
+          for line in f
+      ]
+  allowed_chars = set(''.join(vocab[3:]).replace('▁', ' '))
+
   single_files = {
     lang: os.path.join(data_dir, 'single-%s.txt.gz' % (lang,))
     for lang in _SINGLE_LANG_SAMPLES.keys()
@@ -185,8 +200,10 @@ def split_single(single_dir, data_dir):
         parts = line.rstrip('\r\n').split('\t')
         lang, text = parts
         if lang in lang_count:
-          lang_count[lang] += 1
-          fouts[lang].write('%s\t%s\n' % (text, text))
+          text = clean_text(text)
+          if text:
+            lang_count[lang] += 1
+            fouts[lang].write('%s\t%s\n' % (text, text))
         else:
           lang_count['*'] += 1
         if i % 100000 == 0:
@@ -452,11 +469,6 @@ def main(unused_argv):
         f.write("  '%s': %d,\n" % (lang_pair, n))
       logging.info("%s: %d samples" % (lang_pair, n))
 
-  if FLAGS.single_dir:
-    single_train_files = split_single(FLAGS.single_dir, FLAGS.data_dir)
-  else:
-    single_train_files = None
-
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
   vocab_file, vocab_size = get_vocab_file_and_size()
@@ -486,6 +498,8 @@ def main(unused_argv):
   if not FLAGS.single_dir:
     logging.info("No --single_dir flag is given. Skipping.")
   else:
+    single_train_files = split_single(FLAGS.single_dir, FLAGS.data_dir, vocab_file)
+
     for lang, train_file in single_train_files.items():
       lang_pair = '%s-%s' % (lang, lang)
       num_samples = _SINGLE_LANG_SAMPLES[lang]
