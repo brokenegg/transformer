@@ -367,8 +367,13 @@ def encode_and_save_files(
 
 def shard_filename(path, lang_pair, tag, shard_num, total_shards):
   """Create filename for data shard."""
-  return os.path.join(
-      path, "%s-%s-%s-%.5d-of-%.5d" % (_PREFIX, lang_pair, tag, shard_num, total_shards))
+  lang1, lang2 = lang_pair.split('-')
+  if lang1 == lang2:
+    return os.path.join(
+        path, "%s-%s-%s-%.5d-of-%.5d" % ('single', lang_pair, tag, shard_num, total_shards))
+  else:
+    return os.path.join(
+        path, "%s-%s-%s-%.5d-of-%.5d" % (_PREFIX, lang_pair, tag, shard_num, total_shards))
 
 
 def shuffle_records(fname):
