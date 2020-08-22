@@ -97,7 +97,8 @@ _WIKIMATRIX_LANG_PAIR_SAMPLES = {
 
 _SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
   'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
-_SINGLE_LANG_SAMPLES = {k:v for k, v in _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
+del _SINGLE_LANG_SAMPLES['*']
+#_SINGLE_LANG_SAMPLES = {k:v for k, v in _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
 
 
 # Strings to inclue in the generated files.
