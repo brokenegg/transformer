@@ -95,10 +95,11 @@ _WIKIMATRIX_LANG_PAIR_SAMPLES = {
   'ru-zh': 1264230,
 }
 
-_SINGLE_LANG_SAMPLES = {'ar': 697726, 'de':   49627, 'el':   6085, 'en': 2931473, 'es': 863767,
-  'fr': 231755, 'ja': 4382564, 'ko': 634656, 'ru':   94558, 'zh':  17640, '*': 2949043}
+_SINGLE_LANG_SAMPLES = {
+  'ar': 697703, 'de':   49620, 'el':   6084, 'en': 2931127, 'es': 863746,
+  'fr': 231749, 'ja': 4377299, 'ko': 632469, 'ru':   94556, 'zh':  17628,
+  '*': 2949043}
 del _SINGLE_LANG_SAMPLES['*']
-#_SINGLE_LANG_SAMPLES = {k:v for k, v in _SINGLE_LANG_SAMPLES.items() if k != '*' and v > 100000}
 
 
 # Strings to inclue in the generated files.
@@ -513,7 +514,7 @@ def main(unused_argv):
     for lang, train_file in single_train_files.items():
       lang_pair = '%s-%s' % (lang, lang)
       num_samples = _SINGLE_LANG_SAMPLES[lang]
-      train_shards = num_samples // _TRAIN_SAMPLES_PER_SHARD
+      train_shards = (num_samples + _TRAIN_SAMPLES_PER_SHARD - 1) // _TRAIN_SAMPLES_PER_SHARD
       assert train_shards > 0
       eval_shareds = 0
       eval_ratio = 0.0
