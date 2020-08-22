@@ -172,7 +172,8 @@ def split_single(single_dir, data_dir, vocab_file):
             if ch in allowed_chars
     ]).replace('  ', ' ').strip()
 
-  with tf.gfile.GFile(vocab_file[:-len('.model')] + '.vocab') as f:
+  vocab_file = os.path.join(data_dir, vocab_file[:-len('.model')] + '.vocab')
+  with tf.gfile.GFile(vocab_file) as f:
       vocab = [
           line.split('\t')[0]
           for line in f
