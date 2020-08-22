@@ -217,7 +217,7 @@ def train_spm(spm_train_file, data_dir, vocab_file, vocab_size):
 ###############################################################################
 def encode_and_save_files(
     subtokenizer, data_dir, lang_pair, raw_files, total_train_shards, total_eval_shards, eval_ratio,
-    input_column=1, target_column=2):
+    input_column=1, target_column=2, do_randomize=False):
   """Save data from files as encoded Examples in TFrecord format.
 
   Args:
@@ -260,8 +260,12 @@ def encode_and_save_files(
         if counter > 0 and counter % 100000 == 0:
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
 
-        encoded_input = subtokenizer.encode(parts[input_column], add_eos=True)
-        encoded_target = subtokenizer.encode(parts[target_column], add_eos=True)
+        input_text = parts[input_column]
+        target_text = parts[target_column]
+        if do_randomize:
+          input_text = _randomize_text(input_text)
+        encoded_input = subtokenizer.encode(input_text, add_eos=True)
+        encoded_target = subtokenizer.encode(target_text, add_eos=True)
         example = dict_to_example(
             {"inputs": encoded_input,
             "targets": encoded_target})
@@ -356,6 +360,40 @@ def get_vocab_file_and_size():
     vocab_size = _VOCAB_SIZE_LARGE
 
   return vocab_file, vocab_size
+
+
+def _randomize_text(text):
+  t = random.random()
+  if t < 0.2:
+    text = text.lower()
+  elif t < 0.4:
+    text = text.upper()
+  elif t < 0.5:
+    text = "*" + text
+  elif t < 0.6:
+    text = "." + text
+  elif t < 0.7:
+    text = "." + text
+  elif t < 0.8:
+    text = list(text)
+    if len(text) >= 2:
+      i = random.randint(0, len(text) - 2)
+      text[i], text[i + 1] = text[i + 1], text[i]
+    text = ''.join(text)
+  elif t < 0.9:
+    text = list(text)
+    if len(text) >= 2:
+      i = random.randint(1, len(text) - 1)
+      text = text[i:] + text[:i]
+    text = ''.join(text)
+  else:
+    text = list(text)
+    if len(text) >= 2:
+      l = random.randint(1, len(text) - 1)
+      i = random.randint(0, len(text) - l)
+      text = text[:i] + text[i+l:]
+    text = ''.join(text)
+  return text
 
 
 def main(unused_argv):
