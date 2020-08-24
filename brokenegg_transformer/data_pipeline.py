@@ -193,7 +193,7 @@ def _batch_examples(dataset, batch_size, max_length):
 
 
 def _read_and_batch_from_files(
-    file_pattern, tgt_lang, rev,
+    file_pattern, tgt_lang_id,
     batch_size, max_length, num_parallel_calls, lang_dropout, shuffle, repeat,
     static_batch=False, num_replicas=1, ctx=None):
   """Create dataset where each item is a dict of "inputs" and "targets".
@@ -262,15 +262,12 @@ def _read_and_batch_from_files(
     # num_replicas.
     dataset = _batch_examples(dataset, batch_size, max_length)
 
-  def add_lang(x, lang, lang_dropout):
+  def add_lang(x, lang_id, lang_dropout):
     return tf.concat([
-      tf.cast(tf.random.uniform([tf.shape(x)[0], 1]) >= lang_dropout, tf.int64) * lang,
+      tf.cast(tf.random.uniform([tf.shape(x)[0], 1]) >= lang_dropout, tf.int64) * lang_id,
       x], axis=1)
 
-  if rev:
-    dataset = dataset.map(lambda x, y: (y, add_lang(x, tgt_lang, lang_dropout)))
-  else:
-    dataset = dataset.map(lambda x, y: (x, add_lang(y, tgt_lang, lang_dropout)))
+  dataset = dataset.map(lambda x, y: (x, add_lang(y, tgt_lang_id, lang_dropout)))
   dataset = dataset.repeat(repeat)
 
   # Prefetch the next element to improve speed of input pipeline.
@@ -323,46 +320,33 @@ def _all_langs(lang_pairs):
 def _get_lang_map(vocab_size, langs):
   return {v: vocab_size + k for k, v in enumerate(langs)}
 
-def _need_rev(lang_pair):
-  lang1, lang2 = lang_pair.split('-')
-  #assert lang1 != lang2
-  return lang1 > lang2
 
-def _ordered_lang_pair(lang_pair):
-  lang1, lang2 = lang_pair.split('-')
-  #assert lang1 != lang2
-  if lang1 > lang2:
-    lang2, lang1 = lang1, lang2
-  return '%s-%s' % (lang1, lang2)
-
-def _get_file_dataset(params, tag, add_single, add_extra, skip_extra):
+def _get_file_dataset(params, tag, add_extra, skip_extra):
   if params.get('lang_pairs'):
     lang_pairs = params['lang_pairs'].split(',')
   else:
     lang_pairs = _default_all_lang_pairs(add_single)
   langs = _all_langs(lang_pairs)
-  lang_map = _get_lang_map(64000, langs)
+  lang_id_start = params['vocab_size'] - len(langs)
+  assert lang_id_start == 64000
+  lang_map = _get_lang_map(lang_id_start, langs)
   
   tgt_lang_ids = [
     lang_map[lang_pair.split('-')[1]]
     for lang_pair in lang_pairs]
 
-  need_reverse = [_need_rev(lang_pair) for lang_pair in lang_pairs]
-
   if add_extra:
     lang_pairs.append('extra')
-    tgt_lang_ids.append(64000 + len(langs))
-    need_reverse.append(False)
+    tgt_lang_ids.append(lang_id_start + len(langs))
 
   file_patterns = [
-    os.path.join(params["data_dir"] or "", "*-%s-%s*" % ((_ordered_lang_pair(lang_pair)), tag))
+    os.path.join(params["data_dir"] or "", "*-%s-%s*" % (lang_pair, tag))
     for lang_pair in lang_pairs
   ]
 
   dataset = tf.data.Dataset.from_tensor_slices(
     (tf.constant(file_patterns, dtype=tf.string),
-     tf.constant(tgt_lang_ids, dtype=tf.int64),
-     tf.constant(need_reverse, dtype=tf.bool)))
+     tf.constant(tgt_lang_ids, dtype=tf.int64)))
   return dataset, len(file_patterns)
 
 def train_input_fn(params, ctx=None):
@@ -370,9 +354,9 @@ def train_input_fn(params, ctx=None):
   if params["use_synthetic_data"]:
     return _generate_synthetic_data(params)
 
-  def f(file_pattern, tgt_lang, rev):
+  def f(file_pattern, tgt_lang_id):
     return _read_and_batch_from_files(
-        file_pattern, tgt_lang, rev, params["batch_size"], params["max_length"],
+        file_pattern, tgt_lang_id, params["batch_size"], params["max_length"],
         params["num_parallel_calls"], params["lang_dropout"], shuffle=True,
         repeat=params["repeat_dataset"], static_batch=params["static_batch"],
         num_replicas=params["num_gpus"], ctx=ctx)
@@ -386,9 +370,9 @@ def eval_input_fn(params, ctx=None):
   if params["use_synthetic_data"]:
     return _generate_synthetic_data(params)
 
-  def f(file_pattern, tgt_lang, rev):
+  def f(file_pattern, tgt_lang_id):
     return _read_and_batch_from_files(
-        file_pattern, tgt_lang, rev, params["batch_size"], params["max_length"],
+        file_pattern, tgt_lang_id, params["batch_size"], params["max_length"],
         params["num_parallel_calls"], 0.0, shuffle=False, repeat=1,
         static_batch=params["static_batch"], num_replicas=params["num_gpus"],
         ctx=ctx)

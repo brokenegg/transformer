@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import random
 import gzip
+import re
 
 # pylint: disable=g-bad-import-order
 from absl import app as absl_app
@@ -119,6 +120,7 @@ SPM_TRAIN_SINGLE_RATE = 0.2
 _TRAIN_SAMPLES_PER_SHARD = 45000
 _EVAL_SAMPLES_PER_SHARD = 10000
 
+_RANDOMIZE_INPUT_RATE = 0.3
 
 ###############################################################################
 # Download and extraction functions
@@ -299,7 +301,7 @@ def train_spm(spm_train_file, data_dir, vocab_file, vocab_size):
 ###############################################################################
 def encode_and_save_files(
     subtokenizer, data_dir, lang_pair, raw_files, total_train_shards, total_eval_shards, eval_ratio,
-    input_column=1, target_column=2, do_randomize=False):
+    prefix=_PREFIX, input_column=1, target_column=2, randomize_input=0.0):
   """Save data from files as encoded Examples in TFrecord format.
 
   Args:
@@ -314,9 +316,9 @@ def encode_and_save_files(
     List of all files produced.
   """
   # Create a file for each shard.
-  train_filepaths = [shard_filename(data_dir, lang_pair, _TRAIN_TAG, n + 1, total_train_shards)
+  train_filepaths = [shard_filename(data_dir, prefix, lang_pair, _TRAIN_TAG, n + 1, total_train_shards)
                for n in range(total_train_shards)]
-  eval_filepaths = [shard_filename(data_dir, lang_pair, _EVAL_TAG, n + 1, total_eval_shards)
+  eval_filepaths = [shard_filename(data_dir, prefix, lang_pair, _EVAL_TAG, n + 1, total_eval_shards)
                for n in range(total_eval_shards)]
   filepaths = train_filepaths + eval_filepaths
 
@@ -343,22 +345,26 @@ def encode_and_save_files(
           logging.info("\tSaving case %d of %s." % (counter, raw_file))
 
         input_text = parts[input_column]
-        target_text = parts[target_column]
-        if do_randomize:
-          input_text = _randomize_text(input_text)
+        output_text = parts[target_column]
         encoded_input = subtokenizer.encode(input_text, add_eos=True)
-        encoded_target = subtokenizer.encode(target_text, add_eos=True)
-        example = dict_to_example(
-            {"inputs": encoded_input,
-            "targets": encoded_target})
-        if total_eval_shards == 0 or eval_counter >= eval_ratio * counter:
-          shard = train_counter % total_train_shards
-          train_writers[shard].write(example.SerializeToString())
-          train_counter += 1
-        else:
-          shard = eval_counter % total_eval_shards
-          eval_writers[shard].write(example.SerializeToString())
-          eval_counter += 1
+        encoded_target = subtokenizer.encode(output_text, add_eos=True)
+        for do_randomize in False, True:
+          example = dict_to_example(
+              {"inputs": encoded_input,
+              "targets": encoded_target})
+          if do_randomize or total_eval_shards == 0 or eval_counter >= eval_ratio * counter:
+            shard = train_counter % total_train_shards
+            train_writers[shard].write(example.SerializeToString())
+            train_counter += 1
+          else:
+            shard = eval_counter % total_eval_shards
+            eval_writers[shard].write(example.SerializeToString())
+            eval_counter += 1
+          if randomize_input > 0 and (randomize_input >= 1.0 or random.random() < randomize_input):
+            input_text = _randomize_text(input_text)
+            encoded_input = subtokenizer.encode(input_text, add_eos=True)
+          else:
+            break
 
   for writer in train_writers + eval_writers:
     writer.close()
@@ -370,15 +376,10 @@ def encode_and_save_files(
   return train_filepaths, eval_filepaths
 
 
-def shard_filename(path, lang_pair, tag, shard_num, total_shards):
+def shard_filename(path, prefix, lang_pair, tag, shard_num, total_shards):
   """Create filename for data shard."""
-  lang1, lang2 = lang_pair.split('-')
-  if lang1 == lang2:
-    return os.path.join(
-        path, "%s-%s-%s-%.5d-of-%.5d" % ('single', lang_pair, tag, shard_num, total_shards))
-  else:
-    return os.path.join(
-        path, "%s-%s-%s-%.5d-of-%.5d" % (_PREFIX, lang_pair, tag, shard_num, total_shards))
+  return os.path.join(
+      path, "%s-%s-%s-%.5d-of-%.5d" % (prefix, lang_pair, tag, shard_num, total_shards))
 
 
 def shuffle_records(fname):
@@ -430,6 +431,10 @@ def make_dir(path):
     tf.gfile.MakeDirs(path)
 
 
+def _swap_lang_pair(lang_pair):
+  lang1, lang2 = lang_pair.split('-')
+  return lang2 + '-' + lang1
+
 def get_vocab_file_and_size():
   langs = set(
     lang
@@ -449,38 +454,46 @@ def get_vocab_file_and_size():
   return vocab_file, vocab_size
 
 
+_NON_WORD_RX = re.compile('[^\s\w]+')
+
 def _randomize_text(text):
   t = random.random()
-  if t < 0.2:
+  if t < 0.1:
     text = text.lower()
-  elif t < 0.4:
+  elif t < 0.2:
     text = text.upper()
-  elif t < 0.5:
+  elif t < 0.3:
     text = "*" + text
+  elif t < 0.4:
+    text = "." + text
+  elif t < 0.5:
+    text = "-" + text
   elif t < 0.6:
-    text = "." + text
+    text = _NON_WORD_RX.sub('', text)
   elif t < 0.7:
-    text = "." + text
-  elif t < 0.8:
+    # Swap two characters
     text = list(text)
     if len(text) >= 2:
       i = random.randint(0, len(text) - 2)
       text[i], text[i + 1] = text[i + 1], text[i]
     text = ''.join(text)
-  elif t < 0.9:
-    text = list(text)
+  elif t < 0.8:
+    # Split the text into two and swap the two.
     if len(text) >= 2:
       i = random.randint(1, len(text) - 1)
       text = text[i:] + text[:i]
-    text = ''.join(text)
-  else:
-    text = list(text)
+  elif t < 0.9:
+    # Remove a span.
     if len(text) >= 2:
       l = random.randint(1, len(text) - 1)
       i = random.randint(0, len(text) - l)
       text = text[:i] + text[i+l:]
-    text = ''.join(text)
-  return text
+  else:
+    # Shuffle words
+    text = text.split()
+    random.shuffle(text)
+    text = ' '.join(text)
+  return text.strip()
 
 
 def main(unused_argv):
@@ -536,15 +549,23 @@ def main(unused_argv):
     for lang_pair in lang_pairs:
       train_file = train_files[lang_pair]
       num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
-      train_shards = int((num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+      train_shards = int(((1.0 + _RANDOMIZE_INPUT_RATE) * num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
       assert train_shards > 0
       eval_shareds = 1
       eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
-      train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-          subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
-          train_shards, eval_shareds, eval_ratio)
-      for fname in train_tfrecord_files:
-        shuffle_records(fname)
+      for rev in False, True:
+        input_column = 2 if rev else 1
+        target_column = 1 if rev else 2
+        new_lang_pair = _swap_lang_pair(lang_pair) if rev else lang_pair
+        train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+            subtokenizer, FLAGS.data_dir, new_lang_pair, [train_file],
+            train_shards, eval_shareds, eval_ratio,
+            prefix=_PREFIX,
+            input_column=input_column, target_column=target_column,
+            randomize_input=_RANDOMIZE_INPUT_RATE)
+
+        for fname in train_tfrecord_files:
+          shuffle_records(fname)
 
   logging.info("Step 4/5: Preprocessing and saving single data")
   if not FLAGS.single_dir:
@@ -562,7 +583,9 @@ def main(unused_argv):
       train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
           subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
           train_shards, eval_shareds, eval_ratio,
+          prefix='single',
           input_column=0, target_column=0, do_randomize=True)
+
       for fname in train_tfrecord_files:
         shuffle_records(fname)
 
@@ -576,6 +599,7 @@ def main(unused_argv):
     train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
         subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
         train_shards, 0, eval_ratio,
+        prefix='extra',
         input_column=0, target_column=1)
     for fname in train_tfrecord_files:
       shuffle_records(fname)
