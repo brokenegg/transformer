@@ -321,7 +321,7 @@ def _get_lang_map(vocab_size, langs):
   return {v: vocab_size + k for k, v in enumerate(langs)}
 
 
-def _get_file_dataset(params, tag, add_extra, skip_extra):
+def _get_file_dataset(params, tag, add_single, add_extra, skip_extra):
   if params.get('lang_pairs'):
     lang_pairs = params['lang_pairs'].split(',')
   else:
