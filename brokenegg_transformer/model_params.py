@@ -63,6 +63,7 @@ BASE_PARAMS = defaultdict(
     targets_with_lang_id=True,
     lang_dropout=0.0,
     lang_pairs='',
+    n_codes=1,
 )
 
 BIG_PARAMS = BASE_PARAMS.copy()

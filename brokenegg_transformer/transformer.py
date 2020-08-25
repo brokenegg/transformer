@@ -94,7 +94,7 @@ class Transformer(tf.keras.Model):
     self.encoder_stack = EncoderStack(params)
     self.decoder_stack = DecoderStack(params)
 
-    self.n_codes = 4
+    self.n_codes = self.params["n_codes"]
     with tf.name_scope("code_attention"):
       hidden_size = self.params["hidden_size"]
       self.codes = self.add_weight(
