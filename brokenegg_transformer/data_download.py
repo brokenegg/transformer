@@ -121,6 +121,7 @@ _TRAIN_SAMPLES_PER_SHARD = 45000
 _EVAL_SAMPLES_PER_SHARD = 10000
 
 _RANDOMIZE_INPUT_RATE = 0.3
+_RANDOMIZE_SINGLE_INPUT_RATE = 1.0
 
 ###############################################################################
 # Download and extraction functions
@@ -584,7 +585,8 @@ def main(unused_argv):
           subtokenizer, FLAGS.data_dir, lang_pair, [train_file],
           train_shards, eval_shareds, eval_ratio,
           prefix='single',
-          input_column=0, target_column=0, do_randomize=True)
+          input_column=0, target_column=0,
+          randomize_input=_RANDOMIZE_SINGLE_INPUT_RATE)
 
       for fname in train_tfrecord_files:
         shuffle_records(fname)
