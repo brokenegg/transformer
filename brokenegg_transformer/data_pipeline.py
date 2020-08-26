@@ -309,6 +309,7 @@ def _default_all_lang_pairs(add_single):
     ]
   return sorted(lang_pairs)
 
+
 def _all_langs(lang_pairs):
   langs = set()
   for langpair in lang_pairs:
@@ -316,6 +317,7 @@ def _all_langs(lang_pairs):
     langs.add(lang1)
     langs.add(lang2)
   return sorted(list(langs))
+
 
 def _get_lang_map(vocab_size, langs):
   return {v: vocab_size + k for k, v in enumerate(langs)}
