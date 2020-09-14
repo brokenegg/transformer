@@ -434,17 +434,20 @@ def main(unused_argv):
   # Get paths of download/extracted training and evaluation files.
   logging.info("Step 2/5: Downloading data from source")
   train_files = {}
-  for lang_pair in lang_pairs:
-    train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
-    train_files[lang_pair] = train_file
-    if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
-      logging.info("Counting number of samples.")
-      with gzip.open(train_file, 'rt') as f:
-        n = len(f.readlines())
-      _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
-      with open('sample_count.txt', 'a') as f:
-        f.write("  '%s': %d,\n" % (lang_pair, n))
-      logging.info("%s: %d samples" % (lang_pair, n))
+  if FLAGS.skip_wikimatrix:
+    logging.info("No --skip_wikimatrix flag is given. Skipping.")
+  else:
+    for lang_pair in lang_pairs:
+      train_file = get_source_urls(FLAGS.raw_dir, _WIKIMATRIX_URL_TEMPLATE, lang_pair)
+      train_files[lang_pair] = train_file
+      if not _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]:
+        logging.info("Counting number of samples.")
+        with gzip.open(train_file, 'rt') as f:
+          n = len(f.readlines())
+        _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair] = n
+        with open('sample_count.txt', 'a') as f:
+          f.write("  '%s': %d,\n" % (lang_pair, n))
+        logging.info("%s: %d samples" % (lang_pair, n))
 
   # Create subtokenizer based on the training files.
   logging.info("Step 3/5: Creating sentencepiece and building vocabulary")
@@ -458,25 +461,28 @@ def main(unused_argv):
 
   # Tokenize and save data as Examples in the TFRecord format.
   logging.info("Step 4/5: Preprocessing and saving data")
-  for lang_pair in lang_pairs:
-    train_file = train_files[lang_pair]
-    num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
-    train_shards = int(((1.0 + _RANDOMIZE_INPUT_RATE) * num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
-    assert train_shards > 0
-    eval_shareds = 1
-    eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
-    for rev in False, True:
-      input_column = 2 if rev else 1
-      target_column = 1 if rev else 2
-      new_lang_pair = _swap_lang_pair(lang_pair) if rev else lang_pair
-      train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-          subtokenizer, FLAGS.data_dir, new_lang_pair, [train_file],
-          train_shards, eval_shareds, eval_ratio,
-          prefix=_PREFIX,
-          input_column=input_column, target_column=target_column,
-          randomize_input=_RANDOMIZE_INPUT_RATE)
-      for fname in train_tfrecord_files:
-        shuffle_records(fname)
+  if FLAGS.skip_wikimatrix:
+    logging.info("No --skip_wikimatrix flag is given. Skipping.")
+  else:
+    for lang_pair in lang_pairs:
+      train_file = train_files[lang_pair]
+      num_samples = _WIKIMATRIX_LANG_PAIR_SAMPLES[lang_pair]
+      train_shards = int(((1.0 + _RANDOMIZE_INPUT_RATE) * num_samples - _EVAL_SAMPLES_PER_SHARD) / _TRAIN_SAMPLES_PER_SHARD)
+      assert train_shards > 0
+      eval_shareds = 1
+      eval_ratio = _EVAL_SAMPLES_PER_SHARD / num_samples
+      for rev in False, True:
+        input_column = 2 if rev else 1
+        target_column = 1 if rev else 2
+        new_lang_pair = _swap_lang_pair(lang_pair) if rev else lang_pair
+        train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
+            subtokenizer, FLAGS.data_dir, new_lang_pair, [train_file],
+            train_shards, eval_shareds, eval_ratio,
+            prefix=_PREFIX,
+            input_column=input_column, target_column=target_column,
+            randomize_input=_RANDOMIZE_INPUT_RATE)
+        for fname in train_tfrecord_files:
+          shuffle_records(fname)
 
   logging.info("Step 4/5: Preprocessing and saving extra data")
   if not FLAGS.extra_dir:
@@ -486,8 +492,9 @@ def main(unused_argv):
     train_shards = FLAGS.num_extra_samples // _TRAIN_SAMPLES_PER_SHARD
     eval_ratio = 0.0
     train_tfrecord_files, eval_tfrecord_files = encode_and_save_files(
-        subtokenizer, FLAGS.data_dir, FLAGS.extra_prefix, extra_files,
+        subtokenizer, FLAGS.data_dir, FLAGS.extra_lang_pair, extra_files,
         train_shards, 0, eval_ratio,
+        prefix=FLAGS.extra_prefix,
         input_column=0, target_column=1)
     for fname in train_tfrecord_files:
       shuffle_records(fname)
@@ -515,10 +522,18 @@ def define_data_download_flags():
       name="extra_prefix", short_name="ep", default="extra",
       help=flags_core.help_wrap(
           "Prefix of extra data."))
+  flags.DEFINE_string(
+      name="extra_lang_pair", short_name="el", default="extra",
+      help=flags_core.help_wrap(
+          "Lang pair of extra data"))
   flags.DEFINE_integer(
-      name="num_extra_samples", short_name="en", default=6000000, # 6,996,128 
+      name="num_extra_samples", short_name="en", default=6000000, # 3,307,844
       help=flags_core.help_wrap(
           "Estimated number of extra samples."))
+  flags.DEFINE_boolean(
+      name="skip_wikimatrix", short_name="sw", default=False,
+      help=flags_core.help_wrap(
+          "Skip preprocessing wikimatrix"))
 
 
 if __name__ == "__main__":

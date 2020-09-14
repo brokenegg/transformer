@@ -323,13 +323,15 @@ def _get_lang_map(vocab_size, langs):
   return {v: vocab_size + k for k, v in enumerate(langs)}
 
 
-def _get_file_dataset(params, tag, add_single, add_extra, skip_extra):
+def _get_file_dataset(params, tag, add_single, add_extra):
   if params.get('lang_pairs'):
     lang_pairs = params['lang_pairs'].split(',')
   else:
     lang_pairs = _default_all_lang_pairs(add_single)
   langs = _all_langs(lang_pairs)
   lang_id_start = params['vocab_size'] - len(langs)
+  if add_extra:
+    lang_id_start -= 1
   assert lang_id_start == 64000
   lang_map = _get_lang_map(lang_id_start, langs)
   
@@ -363,7 +365,7 @@ def train_input_fn(params, ctx=None):
         repeat=params["repeat_dataset"], static_batch=params["static_batch"],
         num_replicas=params["num_gpus"], ctx=ctx)
 
-  dataset, cycle_length = _get_file_dataset(params, 'train', add_single=True, add_extra=False, skip_extra=False)
+  dataset, cycle_length = _get_file_dataset(params, 'train', add_single=False, add_extra=True)
   dataset = dataset.interleave(f, cycle_length=cycle_length, block_length=1)
   return dataset
 
@@ -379,7 +381,7 @@ def eval_input_fn(params, ctx=None):
         static_batch=params["static_batch"], num_replicas=params["num_gpus"],
         ctx=ctx)
 
-  dataset, cycle_length = _get_file_dataset(params, 'dev', add_single=False, add_extra=False, skip_extra=False)
+  dataset, cycle_length = _get_file_dataset(params, 'dev', add_single=False, add_extra=False)
   dataset = dataset.interleave(f, cycle_length=cycle_length, block_length=1)
   return dataset
 
